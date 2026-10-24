@@ -4,6 +4,8 @@ let currentTranscript = null;
 let currentAnalysis = null;
 let activePlayer = null;
 let transcriptSegments = [];
+let actionItemsList = [];
+let currentActionFilter = 'all';
 
 // DOM Elements
 const dropzone = document.getElementById('dropzone');
@@ -19,20 +21,29 @@ const workspaceSection = document.getElementById('workspaceSection');
 
 const mediaPlayer = document.getElementById('mediaPlayer');
 const audioPlayer = document.getElementById('audioPlayer');
+const audioVisualizer = document.getElementById('audioVisualizer');
 const transcriptList = document.getElementById('transcriptList');
 const transcriptSearch = document.getElementById('transcriptSearch');
+const searchCount = document.getElementById('searchCount');
 
-// Metadata & Intelligence Elements
+// Strip & KPI Elements
 const stripFileName = document.getElementById('stripFileName');
-const stripDuration = document.getElementById('stripDuration');
 const stripLanguage = document.getElementById('stripLanguage');
 const stripSentiment = document.getElementById('stripSentiment');
+const kpiDuration = document.getElementById('kpiDuration');
+const kpiWords = document.getElementById('kpiWords');
+const kpiPace = document.getElementById('kpiPace');
+const kpiActionCount = document.getElementById('kpiActionCount');
+const kpiDecisionCount = document.getElementById('kpiDecisionCount');
+const kpiSentimentText = document.getElementById('kpiSentimentText');
+
+// Intelligence Tab Elements
 const aiMeetingTitle = document.getElementById('aiMeetingTitle');
 const aiExecutiveSummary = document.getElementById('aiExecutiveSummary');
 const topicsContainer = document.getElementById('topicsContainer');
 const takeawaysList = document.getElementById('takeawaysList');
 const actionItemsTableBody = document.getElementById('actionItemsTableBody');
-const actionItemCount = document.getElementById('actionItemCount');
+const actionItemCountBadge = document.getElementById('actionItemCountBadge');
 const decisionsContainer = document.getElementById('decisionsContainer');
 
 // Chat Elements
@@ -40,7 +51,7 @@ const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
 
-// Settings Elements
+// Settings & Preview Modal Elements
 const apiStatusBadge = document.getElementById('apiStatusBadge');
 const apiStatusText = document.getElementById('apiStatusText');
 const settingsModal = document.getElementById('settingsModal');
@@ -50,17 +61,26 @@ const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
 const geminiModelInput = document.getElementById('geminiModelInput');
 
+const docPreviewModal = document.getElementById('docPreviewModal');
+const closePreviewBtn = document.getElementById('closePreviewBtn');
+const previewDocBody = document.getElementById('previewDocBody');
+const copyPreviewContentBtn = document.getElementById('copyPreviewContentBtn');
+const downloadFromPreviewBtn = document.getElementById('downloadFromPreviewBtn');
+
 // ==========================================
-// Initialization & Settings
+// Initialization
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
   checkApiStatus();
   initTabNavigation();
   initDropzoneEvents();
   initPlayerEvents();
+  initSpeedControls();
+  initActionFilters();
   initChatEvents();
   initExportEvents();
   initSettingsModal();
+  initPreviewModal();
 });
 
 async function checkApiStatus() {
@@ -97,6 +117,17 @@ function initSettingsModal() {
     } else {
       settingsModal.classList.add('hidden');
     }
+  });
+}
+
+function initPreviewModal() {
+  closePreviewBtn.addEventListener('click', () => docPreviewModal.classList.add('hidden'));
+  copyPreviewContentBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(previewDocBody.innerText);
+    alert('Document content copied to clipboard!');
+  });
+  downloadFromPreviewBtn.addEventListener('click', () => {
+    if (currentSessionId) window.open(`/api/export/${currentSessionId}/pdf`, '_blank');
   });
 }
 
@@ -204,9 +235,9 @@ async function processSelectedFile(file) {
     currentTranscript = await transcribeRes.json();
     transcriptSegments = currentTranscript.segments || [];
 
-    // Render Transcript & Metadata
+    // Calculate Metrics & Render Transcript
+    updateKPIMetrics(currentTranscript);
     renderTranscript(transcriptSegments);
-    stripDuration.textContent = formatTime(currentTranscript.duration);
     stripLanguage.textContent = (currentTranscript.language || 'en').toUpperCase();
 
     // Show workspace
@@ -222,6 +253,26 @@ async function processSelectedFile(file) {
     progressBanner.classList.add('hidden');
     uploadSection.classList.remove('hidden');
   }
+}
+
+function updateKPIMetrics(transcript) {
+  const durationSec = transcript.duration || 0;
+  kpiDuration.textContent = formatTime(durationSec);
+
+  // Total word count
+  let totalWords = 0;
+  if (transcript.segments) {
+    transcript.segments.forEach(s => {
+      if (s.words && s.words.length > 0) totalWords += s.words.length;
+      else if (s.text) totalWords += s.text.trim().split(/\s+/).length;
+    });
+  }
+  kpiWords.textContent = totalWords.toLocaleString();
+
+  // Words per minute (WPM)
+  const durationMinutes = durationSec / 60;
+  const wpm = durationMinutes > 0 ? Math.round(totalWords / durationMinutes) : 0;
+  kpiPace.textContent = `Words (~${wpm} WPM)`;
 }
 
 async function runAIAnalysis(sessionId) {
@@ -253,7 +304,7 @@ async function runAIAnalysis(sessionId) {
 }
 
 // ==========================================
-// Rendering Functions
+// Rendering Functions & Word Karaoke
 // ==========================================
 function setupPlayer(mediaUrl, isVideo) {
   if (isVideo) {
@@ -267,6 +318,25 @@ function setupPlayer(mediaUrl, isVideo) {
     audioPlayer.src = mediaUrl;
     activePlayer = audioPlayer;
   }
+
+  // Audio visualizer hook
+  const onPlay = () => audioVisualizer.classList.add('playing');
+  const onPause = () => audioVisualizer.classList.remove('playing');
+
+  activePlayer.addEventListener('play', onPlay);
+  activePlayer.addEventListener('pause', onPause);
+  activePlayer.addEventListener('ended', onPause);
+}
+
+function initSpeedControls() {
+  document.querySelectorAll('.speed-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.speed-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      const rate = parseFloat(pill.dataset.speed) || 1.0;
+      if (activePlayer) activePlayer.playbackRate = rate;
+    });
+  });
 }
 
 function renderTranscript(segments) {
@@ -283,9 +353,22 @@ function renderTranscript(segments) {
     row.dataset.end = seg.end;
     row.id = `seg-${seg.id}`;
 
+    // Render word spans for word-level karaoke if words are present
+    let wordsHtml = '';
+    if (seg.words && seg.words.length > 0) {
+      wordsHtml = seg.words.map((w, wIdx) => {
+        return `<span class="word-span" data-start="${w.start}" data-end="${w.end}" id="w-${seg.id}-${wIdx}">${escapeHtml(w.word)}</span>`;
+      }).join(' ');
+    } else {
+      wordsHtml = escapeHtml(seg.text);
+    }
+
     row.innerHTML = `
       <div class="transcript-time">${formatTime(seg.start)}</div>
-      <div class="transcript-text">${escapeHtml(seg.text)}</div>
+      <div class="transcript-text">${wordsHtml}</div>
+      <button class="copy-line-btn" title="Copy quote with timestamp" onclick="event.stopPropagation(); copyLine(${seg.start}, '${escapeQuote(seg.text)}')">
+        <i class="fa-regular fa-copy"></i>
+      </button>
     `;
 
     row.addEventListener('click', () => {
@@ -299,6 +382,12 @@ function renderTranscript(segments) {
   });
 }
 
+window.copyLine = function(sec, text) {
+  const line = `[${formatTime(sec)}] "${text}"`;
+  navigator.clipboard.writeText(line);
+  alert(`Copied: ${line}`);
+};
+
 function renderAnalysis(analysis) {
   // Title & Summary
   aiMeetingTitle.textContent = analysis.meeting_title || 'Meeting Summary';
@@ -308,6 +397,7 @@ function renderAnalysis(analysis) {
   const sentiment = analysis.overall_sentiment || 'Neutral';
   stripSentiment.textContent = `${sentiment} Tone`;
   stripSentiment.className = `sentiment-pill sentiment-${sentiment.toLowerCase()}`;
+  kpiSentimentText.textContent = sentiment;
 
   // Key Topics
   topicsContainer.innerHTML = '';
@@ -337,31 +427,16 @@ function renderAnalysis(analysis) {
     });
   }
 
-  // Action Items Table
-  actionItemsTableBody.innerHTML = '';
-  const items = analysis.action_items || [];
-  actionItemCount.textContent = `${items.length} Items`;
-  if (items.length > 0) {
-    items.forEach(item => {
-      const tr = document.createElement('tr');
-      const pClass = `priority-${(item.priority || 'medium').toLowerCase()}`;
-      tr.innerHTML = `
-        <td><strong>${item.id}</strong></td>
-        <td>${escapeHtml(item.task)}</td>
-        <td><i class="fa-regular fa-user" style="margin-right:4px;"></i> ${escapeHtml(item.assignee)}</td>
-        <td><i class="fa-regular fa-calendar" style="margin-right:4px;"></i> ${escapeHtml(item.deadline)}</td>
-        <td><span class="badge ${pClass}">${escapeHtml(item.priority)}</span></td>
-        <td><span class="badge" style="background:rgba(255,255,255,0.06);">${escapeHtml(item.status)}</span></td>
-      `;
-      actionItemsTableBody.appendChild(tr);
-    });
-  } else {
-    actionItemsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#9ca3af; padding:20px;">No explicit action items found.</td></tr>';
-  }
+  // Action Items
+  actionItemsList = analysis.action_items || [];
+  kpiActionCount.textContent = actionItemsList.length;
+  actionItemCountBadge.textContent = `${actionItemsList.length} Tasks`;
+  renderActionItemsTable();
 
   // Key Decisions
   decisionsContainer.innerHTML = '';
   const decisions = analysis.key_decisions || [];
+  kpiDecisionCount.textContent = decisions.length;
   if (decisions.length > 0) {
     decisions.forEach(d => {
       const card = document.createElement('div');
@@ -378,13 +453,87 @@ function renderAnalysis(analysis) {
 }
 
 // ==========================================
-// Synced Player & Subtitle Highlighting
+// Interactive Action Items Tracker
+// ==========================================
+function initActionFilters() {
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentActionFilter = btn.dataset.filter;
+      renderActionItemsTable();
+    });
+  });
+}
+
+function renderActionItemsTable() {
+  actionItemsTableBody.innerHTML = '';
+  if (!actionItemsList || actionItemsList.length === 0) {
+    actionItemsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#9ca3af; padding:20px;">No action items detected.</td></tr>';
+    return;
+  }
+
+  const filtered = actionItemsList.filter(item => {
+    if (currentActionFilter === 'all') return true;
+    if (currentActionFilter === 'high') return (item.priority || '').toLowerCase() === 'high';
+    if (currentActionFilter === 'open') return (item.status || '').toLowerCase() === 'open';
+    if (currentActionFilter === 'completed') return (item.status || '').toLowerCase() === 'completed';
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    actionItemsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#9ca3af; padding:20px;">No items match the selected filter.</td></tr>';
+    return;
+  }
+
+  filtered.forEach(item => {
+    const tr = document.createElement('tr');
+    const isDone = (item.status || '').toLowerCase() === 'completed';
+    if (isDone) tr.className = 'task-completed';
+
+    const pClass = `priority-${(item.priority || 'medium').toLowerCase()}`;
+    const statusClass = isDone ? 'status-completed' : (item.status === 'In Progress' ? 'status-in-progress' : 'status-open');
+    const statusIcon = isDone ? 'fa-circle-check' : (item.status === 'In Progress' ? 'fa-spinner' : 'fa-circle-dot');
+
+    tr.innerHTML = `
+      <td><strong>${item.id}</strong></td>
+      <td class="task-text-col">${escapeHtml(item.task)}</td>
+      <td><i class="fa-regular fa-user" style="margin-right:4px;"></i> ${escapeHtml(item.assignee)}</td>
+      <td><i class="fa-regular fa-calendar" style="margin-right:4px;"></i> ${escapeHtml(item.deadline)}</td>
+      <td><span class="badge ${pClass}">${escapeHtml(item.priority)}</span></td>
+      <td>
+        <button class="task-status-btn ${statusClass}" onclick="toggleTaskStatus(${item.id})">
+          <i class="fa-regular ${statusIcon}"></i> ${escapeHtml(item.status || 'Open')}
+        </button>
+      </td>
+    `;
+    actionItemsTableBody.appendChild(tr);
+  });
+}
+
+window.toggleTaskStatus = function(taskId) {
+  const item = actionItemsList.find(i => i.id === taskId);
+  if (!item) return;
+
+  // Cycle status: Open -> In Progress -> Completed -> Open
+  if (item.status === 'Open') item.status = 'In Progress';
+  else if (item.status === 'In Progress') item.status = 'Completed';
+  else item.status = 'Open';
+
+  renderActionItemsTable();
+};
+
+// ==========================================
+// Synced Player & Word Karaoke Engine
 // ==========================================
 function initPlayerEvents() {
+  let activeWordSpan = null;
+
   const handleTimeUpdate = (e) => {
     const curTime = e.target.currentTime;
     let activeRow = null;
 
+    // Line-level highlight
     document.querySelectorAll('.transcript-row').forEach(row => {
       const start = parseFloat(row.dataset.start);
       const end = parseFloat(row.dataset.end);
@@ -397,13 +546,29 @@ function initPlayerEvents() {
     });
 
     if (activeRow) {
-      // Smoothly scroll active row into view within container
+      // Word-level karaoke highlight inside the active row
+      const wordSpans = activeRow.querySelectorAll('.word-span');
+      wordSpans.forEach(w => {
+        const wStart = parseFloat(w.dataset.start);
+        const wEnd = parseFloat(w.dataset.end);
+        if (curTime >= wStart && curTime <= wEnd) {
+          if (activeWordSpan !== w) {
+            if (activeWordSpan) activeWordSpan.classList.remove('word-active');
+            w.classList.add('word-active');
+            activeWordSpan = w;
+          }
+        } else {
+          w.classList.remove('word-active');
+        }
+      });
+
+      // Smooth scrolling
       const containerTop = transcriptList.scrollTop;
       const containerHeight = transcriptList.clientHeight;
       const rowTop = activeRow.offsetTop - transcriptList.offsetTop;
 
-      if (rowTop < containerTop || rowTop > (containerTop + containerHeight - 60)) {
-        transcriptList.scrollTo({ top: rowTop - 40, behavior: 'smooth' });
+      if (rowTop < containerTop || rowTop > (containerTop + containerHeight - 80)) {
+        transcriptList.scrollTo({ top: rowTop - 50, behavior: 'smooth' });
       }
     }
   };
@@ -411,23 +576,31 @@ function initPlayerEvents() {
   mediaPlayer.addEventListener('timeupdate', handleTimeUpdate);
   audioPlayer.addEventListener('timeupdate', handleTimeUpdate);
 
-  // Keyword search
+  // Keyword search with match counter
   transcriptSearch.addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase().trim();
+    let matches = 0;
+
     document.querySelectorAll('.transcript-row').forEach(row => {
       const textElem = row.querySelector('.transcript-text');
       const text = textElem.textContent;
       if (!term) {
         row.style.display = 'flex';
-        textElem.innerHTML = escapeHtml(text);
+        searchCount.classList.add('hidden');
       } else if (text.toLowerCase().includes(term)) {
         row.style.display = 'flex';
+        matches++;
         const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
         textElem.innerHTML = escapeHtml(text).replace(regex, '<mark class="highlight-term">$1</mark>');
       } else {
         row.style.display = 'none';
       }
     });
+
+    if (term) {
+      searchCount.textContent = `${matches} match${matches === 1 ? '' : 'es'}`;
+      searchCount.classList.remove('hidden');
+    }
   });
 
   // Copy full transcript
@@ -435,6 +608,14 @@ function initPlayerEvents() {
     if (currentTranscript?.plain_text) {
       navigator.clipboard.writeText(currentTranscript.plain_text);
       alert('Full transcript copied to clipboard!');
+    }
+  });
+
+  // Copy Executive Summary
+  document.getElementById('copySummaryBtn')?.addEventListener('click', () => {
+    if (aiExecutiveSummary.innerText) {
+      navigator.clipboard.writeText(aiExecutiveSummary.innerText);
+      alert('Executive summary copied to clipboard!');
     }
   });
 }
@@ -450,7 +631,8 @@ function initChatEvents() {
     appendChatMessage('user', q);
     chatInput.value = '';
 
-    const assistantMsg = appendChatMessage('assistant', 'Thinking and searching transcript...');
+    // Show wave typing indicator
+    const assistantMsg = appendChatMessage('assistant', '<div class="typing-dots"><span></span><span></span><span></span></div>', true);
 
     try {
       const res = await fetch('/api/ask', {
@@ -468,7 +650,7 @@ function initChatEvents() {
       const data = await res.json();
       let formattedAnswer = escapeHtml(data.answer);
 
-      // Convert bracket timestamps like [01:23] into clickable pills
+      // Convert bracket timestamps into clickable pills
       formattedAnswer = formattedAnswer.replace(/\[(\d{1,2}:\d{2})(?:\s*-\s*\d{1,2}:\d{2})?\]/g, (match, startTime) => {
         const seconds = parseTimeToSeconds(startTime);
         return `<span class="timestamp-cite" onclick="seekTo(${seconds})">${match}</span>`;
@@ -493,12 +675,12 @@ function askPreset(question) {
   sendChatBtn.click();
 }
 
-function appendChatMessage(sender, text) {
+function appendChatMessage(sender, text, isHtml = false) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender === 'user' ? 'user-msg' : 'assistant-msg'}`;
   msgDiv.innerHTML = `
     <div class="msg-avatar"><i class="fa-solid ${sender === 'user' ? 'fa-user' : 'fa-robot'}"></i></div>
-    <div class="msg-body">${escapeHtml(text)}</div>
+    <div class="msg-body">${isHtml ? text : escapeHtml(text)}</div>
   `;
   chatMessages.appendChild(msgDiv);
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -514,9 +696,27 @@ window.seekTo = function(seconds) {
 };
 
 // ==========================================
-// Exports
+// Exports & Live Document Preview
 // ==========================================
 function initExportEvents() {
+  // Live Preview PDF Modal
+  document.getElementById('previewPdfBtn')?.addEventListener('click', () => {
+    if (!currentAnalysis) {
+      alert('Meeting analysis is not ready yet.');
+      return;
+    }
+    const docText = generateMoMDocumentText();
+    previewDocBody.innerText = docText;
+    docPreviewModal.classList.remove('hidden');
+  });
+
+  // Copy Markdown
+  document.getElementById('copyMdBtn')?.addEventListener('click', () => {
+    const docText = generateMoMDocumentText();
+    navigator.clipboard.writeText(docText);
+    alert('Full Markdown report copied to clipboard!');
+  });
+
   document.getElementById('downloadPdfBtn')?.addEventListener('click', () => {
     if (currentSessionId) window.open(`/api/export/${currentSessionId}/pdf`, '_blank');
   });
@@ -532,6 +732,35 @@ function initExportEvents() {
   document.getElementById('downloadSrtBtn')?.addEventListener('click', () => {
     if (currentSessionId) window.open(`/api/export/${currentSessionId}/srt`, '_blank');
   });
+}
+
+function generateMoMDocumentText() {
+  if (!currentAnalysis) return 'No analysis available.';
+  let out = `MINUTES OF MEETING: ${currentAnalysis.meeting_title}\n`;
+  out += `=========================================================\n\n`;
+  out += `OVERALL TONE: ${currentAnalysis.overall_sentiment}\n\n`;
+  out += `1. EXECUTIVE SUMMARY\n---------------------------------------------------------\n`;
+  out += `${currentAnalysis.executive_summary}\n\n`;
+
+  out += `2. KEY TOPICS\n---------------------------------------------------------\n`;
+  (currentAnalysis.key_topics || []).forEach(t => {
+    out += `• ${t.topic}: ${t.summary}\n`;
+    (t.key_points || []).forEach(p => out += `   - ${p}\n`);
+  });
+  out += `\n`;
+
+  out += `3. ACTION ITEMS\n---------------------------------------------------------\n`;
+  (actionItemsList || []).forEach(item => {
+    out += `[${item.status}] #${item.id}: ${item.task} | Assignee: ${item.assignee} | Due: ${item.deadline} | Priority: ${item.priority}\n`;
+  });
+  out += `\n`;
+
+  out += `4. KEY DECISIONS\n---------------------------------------------------------\n`;
+  (currentAnalysis.key_decisions || []).forEach(d => {
+    out += `• Decision ${d.id}: ${d.decision} (${d.rationale || ''})\n`;
+  });
+
+  return out;
 }
 
 // ==========================================
@@ -556,6 +785,11 @@ function escapeHtml(str) {
   return str.replace(/[&<>'"]/g, tag => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[tag] || tag));
+}
+
+function escapeQuote(str) {
+  if (!str) return '';
+  return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 function escapeRegex(string) {

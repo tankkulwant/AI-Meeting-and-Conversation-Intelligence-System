@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI-Powered Meeting & Conversation Intelligence System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="logo-icon">
+        <i class="fa-solid fa-brain-circuit"></i>
+      </div>
+      <div>
+        <h1 class="brand-title">MeetingIntelligence<span class="brand-accent">.AI</span></h1>
+        <p class="brand-subtitle">AI-Powered Conversation Analysis & Action Engine</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div id="apiStatusBadge" class="status-badge status-warning">
+        <span class="status-dot"></span>
+        <span id="apiStatusText">Checking Gemini API...</span>
+      </div>
+      <button id="openSettingsBtn" class="btn btn-secondary">
+        <i class="fa-solid fa-gear"></i> Settings
+      </button>
+      <a href="/docs" target="_blank" class="btn btn-outline" title="View Swagger REST API Docs">
+        <i class="fa-solid fa-code"></i> API Docs
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="app-container">
+    <!-- Upload Hero Section (Shown initially or can be reset) -->
+    <section id="uploadSection" class="upload-section">
+      <div class="upload-card">
+        <div class="upload-dropzone" id="dropzone">
+          <input type="file" id="mediaFileInput" accept="video/*,audio/*" class="file-input-hidden">
+          <div class="dropzone-icon">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+          </div>
+          <h2 class="dropzone-title">Upload Meeting Recording</h2>
+          <p class="dropzone-desc">Drag & drop any video (.mp4, .mkv, .mov) or audio (.mp3, .wav, .m4a) file</p>
+          <div class="dropzone-controls">
+            <button id="browseBtn" class="btn btn-primary">
+              <i class="fa-solid fa-folder-open"></i> Browse Files
+            </button>
+            <div class="select-group">
+              <label for="modelSelect">Whisper Model:</label>
+              <select id="modelSelect" class="form-select">
+                <option value="base" selected>Base (Fast & Balanced)</option>
+                <option value="tiny">Tiny (Ultra-Fast)</option>
+                <option value="small">Small (High Accuracy)</option>
+              </select>
+            </div>
+            <div class="select-group">
+              <label for="langSelect">Language:</label>
+              <select id="langSelect" class="form-select">
+                <option value="auto" selected>Auto-Detect</option>
+                <option value="en">English</option>
+                <option value="hi">Hindi / Hinglish</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Progress / Loading Banner -->
+    <div id="progressBanner" class="progress-banner hidden">
+      <div class="spinner"></div>
+      <div class="progress-info">
+        <h4 id="progressStatus">Processing Audio...</h4>
+        <p id="progressDetail">Extracting 16kHz audio stream and generating word timestamps.</p>
+      </div>
+    </div>
+
+    <!-- Active Meeting Workspace (Shown after processing) -->
+    <section id="workspaceSection" class="workspace-section hidden">
+      <!-- Meeting Overview Strip -->
+      <div class="meeting-strip">
+        <div class="strip-info">
+          <span class="file-badge"><i class="fa-solid fa-file-video"></i> <span id="stripFileName">meeting.mp4</span></span>
+          <span class="meta-pill"><i class="fa-solid fa-clock"></i> <span id="stripDuration">00:00</span></span>
+          <span class="meta-pill"><i class="fa-solid fa-language"></i> <span id="stripLanguage">EN</span></span>
+          <span id="stripSentiment" class="sentiment-pill sentiment-neutral">Neutral Tone</span>
+        </div>
+        <div class="strip-actions">
+          <button id="reanalyzeBtn" class="btn btn-sm btn-outline">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Analyze with AI
+          </button>
+          <button id="newMeetingBtn" class="btn btn-sm btn-secondary">
+            <i class="fa-solid fa-plus"></i> New Meeting
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="tab-navigation">
+        <button class="tab-btn active" data-tab="tabTranscript">
+          <i class="fa-solid fa-closed-captioning"></i> Media & Synced Subtitles
+        </button>
+        <button class="tab-btn" data-tab="tabSummary">
+          <i class="fa-solid fa-file-lines"></i> Executive Summary & Topics
+        </button>
+        <button class="tab-btn" data-tab="tabActions">
+          <i class="fa-solid fa-list-check"></i> Action Items & Decisions
+        </button>
+        <button class="tab-btn" data-tab="tabQA">
+          <i class="fa-solid fa-comments"></i> Ask the Meeting (Q&A)
+        </button>
+        <button class="tab-btn" data-tab="tabExport">
+          <i class="fa-solid fa-file-export"></i> Export Center (MoM)
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="tab-content-wrapper">
+        <!-- TAB 1: Media Player & Synchronized Subtitles -->
+        <div id="tabTranscript" class="tab-pane active">
+          <div class="transcript-grid">
+            <!-- Left: Media Player -->
+            <div class="media-column">
+              <div class="player-wrapper">
+                <video id="mediaPlayer" controls class="custom-player" preload="metadata"></video>
+                <audio id="audioPlayer" controls class="custom-player hidden"></audio>
+              </div>
+              <div class="media-hint">
+                <i class="fa-solid fa-circle-info"></i> Click any transcript row on the right to jump playback to that exact second.
+              </div>
+            </div>
+
+            <!-- Right: Synced Interactive Subtitle List -->
+            <div class="transcript-column">
+              <div class="transcript-header">
+                <div class="search-box">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="transcriptSearch" placeholder="Search transcript keywords...">
+                </div>
+                <div class="transcript-actions">
+                  <button id="copyTranscriptBtn" class="btn btn-sm btn-secondary" title="Copy full transcript">
+                    <i class="fa-regular fa-copy"></i>
+                  </button>
+                  <button id="downloadSrtBtn" class="btn btn-sm btn-secondary" title="Download .SRT">
+                    <i class="fa-solid fa-download"></i> .SRT
+                  </button>
+                </div>
+              </div>
+              <div id="transcriptList" class="transcript-list">
+                <!-- Dynamically rendered subtitle blocks -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: Executive Summary & Topics -->
+        <div id="tabSummary" class="tab-pane">
+          <div class="summary-layout">
+            <div class="card summary-card">
+              <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-sparkles text-primary"></i> Executive Summary (TL;DR)</h3>
+                <span id="summarySentimentBadge" class="badge"></span>
+              </div>
+              <div class="card-body">
+                <h2 id="aiMeetingTitle" class="ai-meeting-title">Loading title...</h2>
+                <div id="aiExecutiveSummary" class="ai-summary-text">Analyzing meeting content...</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-layer-group text-primary"></i> Key Discussion Topics</h3>
+              </div>
+              <div class="card-body">
+                <div id="topicsContainer" class="topics-container">
+                  <!-- Dynamically populated topic cards -->
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-bullseye text-primary"></i> Key Takeaways</h3>
+              </div>
+              <div class="card-body">
+                <ul id="takeawaysList" class="takeaways-list">
+                  <!-- Dynamically populated -->
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: Action Items & Decisions -->
+        <div id="tabActions" class="tab-pane">
+          <div class="actions-layout">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-clipboard-check text-primary"></i> Action Items Table</h3>
+                <span id="actionItemCount" class="badge badge-primary">0 Items</span>
+              </div>
+              <div class="card-body table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 50px;">#</th>
+                      <th>Action Task</th>
+                      <th>Assignee</th>
+                      <th>Deadline</th>
+                      <th>Priority</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="actionItemsTableBody">
+                    <!-- Dynamic rows -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title"><i class="fa-solid fa-handshake text-primary"></i> Key Decisions & Agreements</h3>
+              </div>
+              <div class="card-body">
+                <div id="decisionsContainer" class="decisions-container">
+                  <!-- Dynamic decision cards -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: Ask the Meeting (Q&A Chat) -->
+        <div id="tabQA" class="tab-pane">
+          <div class="chat-layout card">
+            <div class="chat-header">
+              <div>
+                <h3 class="card-title"><i class="fa-solid fa-robot text-primary"></i> Conversational Intelligence</h3>
+                <p class="chat-subtitle">Ask anything about this meeting; answers are grounded with timestamp citations.</p>
+              </div>
+              <div class="chat-presets">
+                <button class="preset-chip" onclick="askPreset('What were the primary decisions made?')">What was decided?</button>
+                <button class="preset-chip" onclick="askPreset('Who has action items assigned to them?')">Who has tasks?</button>
+                <button class="preset-chip" onclick="askPreset('Was any budget or deadline mentioned?')">Budgets & Deadlines</button>
+              </div>
+            </div>
+            <div id="chatMessages" class="chat-messages">
+              <div class="message assistant-msg">
+                <div class="msg-avatar"><i class="fa-solid fa-robot"></i></div>
+                <div class="msg-body">
+                  Hello! I have reviewed the full recording transcript. What would you like to know about this conversation?
+                </div>
+              </div>
+            </div>
+            <div class="chat-input-bar">
+              <input type="text" id="chatInput" placeholder="Ask a question about this meeting (e.g., 'What did John say about Q3 roadmap?')...">
+              <button id="sendChatBtn" class="btn btn-primary">
+                <i class="fa-solid fa-paper-plane"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 5: Export Center (Minutes of Meeting) -->
+        <div id="tabExport" class="tab-pane">
+          <div class="export-grid">
+            <div class="card export-card">
+              <div class="export-icon pdf-icon"><i class="fa-solid fa-file-pdf"></i></div>
+              <h3>Formal MoM (PDF)</h3>
+              <p>Formatted academic/corporate Minutes of Meeting document with executive summary, tables, and decisions.</p>
+              <button id="downloadPdfBtn" class="btn btn-primary btn-block">
+                <i class="fa-solid fa-download"></i> Download PDF Report
+              </button>
+            </div>
+
+            <div class="card export-card">
+              <div class="export-icon md-icon"><i class="fa-brands fa-markdown"></i></div>
+              <h3>Markdown Report (.MD)</h3>
+              <p>Clean GitHub-flavored markdown file containing all meeting analysis, tables, and timestamped transcript.</p>
+              <button id="downloadMdBtn" class="btn btn-secondary btn-block">
+                <i class="fa-solid fa-download"></i> Download Markdown
+              </button>
+            </div>
+
+            <div class="card export-card">
+              <div class="export-icon sub-icon"><i class="fa-solid fa-closed-captioning"></i></div>
+              <h3>Subtitles (.SRT & .VTT)</h3>
+              <p>Standard SubRip and WebVTT subtitle tracks for video players or YouTube captions.</p>
+              <div class="dual-btn-row">
+                <button id="exportSrtBtn" class="btn btn-outline"><i class="fa-solid fa-download"></i> .SRT</button>
+                <button id="exportVttBtn" class="btn btn-outline"><i class="fa-solid fa-download"></i> .VTT</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-sliders"></i> System Settings</h3>
+        <button id="closeSettingsBtn" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="geminiApiKeyInput">Google Gemini API Key:</label>
+          <input type="password" id="geminiApiKeyInput" class="form-input" placeholder="Paste AI Studio API Key (AIzaSy...)">
+          <small class="form-hint">Used for Executive Summary, Action Items, and Q&A. <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Get a free key here</a>.</small>
+        </div>
+        <div class="form-group">
+          <label for="geminiModelInput">Gemini Model:</label>
+          <select id="geminiModelInput" class="form-select">
+            <option value="gemini-1.5-flash" selected>Gemini 1.5 Flash (Recommended: Fast & High Context)</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning)</option>
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

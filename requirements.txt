@@ -1,0 +1,18 @@
+# Web Framework & Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
+aiofiles>=23.2.1
+
+# Speech-to-Text & Media Processing
+faster-whisper>=1.0.0
+ffmpeg-python>=0.2.0
+
+# AI Intelligence & LLM
+google-genai>=0.1.1
+google-generativeai>=0.8.0
+pydantic>=2.6.0
+python-dotenv>=1.0.1
+
+# Export & PDF Generation
+reportlab>=4.1.0

@@ -23,7 +23,9 @@ DEFAULT_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8" if DEFAULT_DEVIC
 
 # Google Gemini API configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+
+
 
 # Server settings
 HOST = os.getenv("SERVER_HOST", "127.0.0.1")

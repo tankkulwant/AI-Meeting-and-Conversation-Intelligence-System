@@ -3,102 +3,306 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI-Powered Meeting & Conversation Intelligence System</title>
+  <title>MeetingIntelligence.AI — Conversation & Action Intelligence</title>
+  <!-- Favicons (SVG & ICO for all modern and legacy browsers) -->
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="apple-touch-icon" href="/static/img/logo.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body class="dark-theme">
-  <!-- Top Navigation Header -->
+  <!-- Top Navigation Header with Transparent Logo -->
   <header class="app-header">
-    <div class="header-brand">
-      <div class="logo-icon">
-        <i class="fa-solid fa-brain-circuit"></i>
+    <div class="header-inner">
+      <div class="header-brand">
+        <a href="/" class="brand-link" title="MeetingIntelligence.AI Home">
+          <div class="brand-logo-wrap">
+            <img src="/static/img/logo.svg" alt="MeetingIntelligence.AI Logo" class="brand-logo-img">
+          </div>
+          <div class="brand-text">
+            <div class="brand-title-row">
+              <span class="brand-title">MeetingIntelligence</span><span class="brand-accent">.AI</span>
+              <span class="brand-version-badge">v2.1</span>
+            </div>
+            <p class="brand-subtitle">AI Conversation Analysis &amp; Action Intelligence</p>
+          </div>
+        </a>
       </div>
-      <div>
-        <h1 class="brand-title">MeetingIntelligence<span class="brand-accent">.AI</span></h1>
-        <p class="brand-subtitle">AI-Powered Conversation Analysis & Action Engine</p>
+
+      <div class="header-actions">
+        <!-- Live AI Engine Status Indicator -->
+        <div id="apiStatusBadge" class="status-badge status-warning" title="Gemini AI Analysis Status">
+          <span class="status-dot"></span>
+          <span id="apiStatusText">Checking Gemini API...</span>
+        </div>
+
+        <div class="header-divider"></div>
+
+        <!-- Header Actions -->
+        <button id="openSettingsBtn" class="nav-btn" title="Configure Gemini API Key and Whisper Model">
+          <i class="fa-solid fa-sliders"></i>
+          <span>Settings</span>
+        </button>
+
+        <a href="/docs" target="_blank" class="nav-btn nav-btn-outline" title="Interactive Swagger REST API Documentation">
+          <i class="fa-solid fa-code"></i>
+          <span>API Docs</span>
+        </a>
+
+        <a href="https://github.com/tankkulwant/AI-Meeting-and-Conversation-Intelligence-System" target="_blank" class="nav-icon-link" title="GitHub Repository">
+          <i class="fa-brands fa-github"></i>
+        </a>
       </div>
-    </div>
-    <div class="header-actions">
-      <div id="apiStatusBadge" class="status-badge status-warning">
-        <span class="status-dot"></span>
-        <span id="apiStatusText">Checking Gemini API...</span>
-      </div>
-      <button id="openSettingsBtn" class="btn btn-secondary">
-        <i class="fa-solid fa-gear"></i> Settings
-      </button>
-      <a href="/docs" target="_blank" class="btn btn-outline" title="View Swagger REST API Docs">
-        <i class="fa-solid fa-code"></i> API Docs
-      </a>
     </div>
   </header>
 
   <!-- Main Container -->
   <main class="app-container">
-    <!-- Upload Hero Section (Shown initially or can be reset) -->
+    <!-- Modernized Upload Hero Section -->
     <section id="uploadSection" class="upload-section">
-      <div class="upload-card">
+      <!-- Hero Intro Header -->
+      <div class="hero-header">
+        <div class="hero-badge">
+          <span class="badge-pulse"></span>
+          <span>Faster-Whisper v3 + Gemini 3.8 Flash</span>
+          <span class="badge-divider">•</span>
+          <span class="badge-accent">Enterprise AI</span>
+        </div>
+        <h2 class="hero-headline">
+          Turn Meeting Recordings into <span class="gradient-text">Actionable Intelligence</span>
+        </h2>
+        <p class="hero-subtext">
+          Transcribe, analyze, and act on every conversation. Get word-synced interactive playback, executive minutes, smart action items, and timestamped Q&A in seconds.
+        </p>
+      </div>
+
+      <!-- Upload Studio Box -->
+      <div class="upload-studio-card">
+        <!-- Dropzone Target -->
         <div class="upload-dropzone" id="dropzone">
           <input type="file" id="mediaFileInput" accept="video/*,audio/*" class="file-input-hidden">
-          <div class="dropzone-icon">
-            <i class="fa-solid fa-cloud-arrow-up"></i>
+          
+          <div class="upload-art-hub">
+            <div class="upload-ring-outer"></div>
+            <div class="upload-ring-inner"></div>
+            <div class="upload-icon-center">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+            </div>
           </div>
-          <h2 class="dropzone-title">Upload Meeting Recording</h2>
-          <p class="dropzone-desc">Drag & drop any video (.mp4, .mkv, .mov) or audio (.mp3, .wav, .m4a) file</p>
-          <div class="dropzone-controls">
-            <button id="browseBtn" class="btn btn-primary">
-              <i class="fa-solid fa-folder-open"></i> Browse Files
-            </button>
-            <div class="select-group">
-              <label for="modelSelect">Whisper Model:</label>
-              <select id="modelSelect" class="form-select">
+
+          <h3 class="dropzone-title">Drop your recording here, or browse files</h3>
+          <p class="dropzone-desc">Fast on-device audio normalization and neural speech transcription</p>
+
+          <div class="format-pills-row">
+            <span class="fmt-pill"><i class="fa-solid fa-video"></i> MP4</span>
+            <span class="fmt-pill"><i class="fa-solid fa-film"></i> MOV</span>
+            <span class="fmt-pill"><i class="fa-solid fa-file-video"></i> MKV</span>
+            <span class="fmt-pill"><i class="fa-solid fa-music"></i> MP3</span>
+            <span class="fmt-pill"><i class="fa-solid fa-wave-square"></i> WAV</span>
+            <span class="fmt-pill"><i class="fa-solid fa-file-audio"></i> M4A</span>
+          </div>
+
+          <button id="browseBtn" class="btn btn-primary btn-browse">
+            <i class="fa-solid fa-folder-open"></i> Select Media File
+          </button>
+        </div>
+
+        <!-- Studio Configuration Bar -->
+        <div class="studio-config-bar">
+          <div class="config-controls">
+            <div class="config-item">
+              <span class="config-label"><i class="fa-solid fa-microchip"></i> Whisper Model</span>
+              <select id="modelSelect" class="form-select config-select">
                 <option value="base" selected>Base (Fast & Balanced)</option>
                 <option value="tiny">Tiny (Ultra-Fast)</option>
                 <option value="small">Small (High Accuracy)</option>
               </select>
             </div>
-            <div class="select-group">
-              <label for="langSelect">Language:</label>
-              <select id="langSelect" class="form-select">
+            <div class="config-item">
+              <span class="config-label"><i class="fa-solid fa-globe"></i> Language</span>
+              <select id="langSelect" class="form-select config-select">
                 <option value="auto" selected>Auto-Detect</option>
-                <option value="en">English</option>
+                <option value="en">English (US/UK/Global)</option>
                 <option value="hi">Hindi / Hinglish</option>
               </select>
             </div>
           </div>
+
+          <div class="privacy-guarantee">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>Local & Private Audio Processing</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Capabilities Grid (Below Upload Card) -->
+      <div class="capabilities-grid">
+        <div class="cap-card">
+          <div class="cap-icon icon-karaoke"><i class="fa-solid fa-headphones-simple"></i></div>
+          <div class="cap-content">
+            <h4>Word-Synced Playback</h4>
+            <p>Sub-second word timestamp alignment with live karaoke auto-scroll seeking.</p>
+          </div>
+        </div>
+
+        <div class="cap-card">
+          <div class="cap-icon icon-mom"><i class="fa-solid fa-file-signature"></i></div>
+          <div class="cap-content">
+            <h4>Executive MoM & Decisions</h4>
+            <p>One-click formal Minutes of Meeting with takeaways and verified decisions.</p>
+          </div>
+        </div>
+
+        <div class="cap-card">
+          <div class="cap-icon icon-tasks"><i class="fa-solid fa-list-check"></i></div>
+          <div class="cap-content">
+            <h4>Smart Action Extractor</h4>
+            <p>AI extracts owners, priority tags, and status checkboxes ready for export.</p>
+          </div>
+        </div>
+
+        <div class="cap-card">
+          <div class="cap-icon icon-chat"><i class="fa-solid fa-comments"></i></div>
+          <div class="cap-content">
+            <h4>Contextual Q&A Chat</h4>
+            <p>Ask anything about the meeting with clickable instant jump-to-timestamp links.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Saved Meeting History Section -->
+      <div id="recentMeetingsSection" class="recent-meetings-section hidden">
+        <div class="recent-header">
+          <div class="recent-title-wrap">
+            <i class="fa-solid fa-clock-rotate-left recent-title-icon"></i>
+            <h3>Saved Meeting Recordings</h3>
+            <span id="recentCountBadge" class="recent-count-badge">0 saved</span>
+          </div>
+          <button id="refreshRecentBtn" class="btn btn-sm btn-outline" title="Refresh saved recordings">
+            <i class="fa-solid fa-arrow-rotate-right"></i> Refresh
+          </button>
+        </div>
+        <div id="recentMeetingsGrid" class="recent-meetings-grid">
+          <!-- Dynamically populated session cards -->
         </div>
       </div>
     </section>
 
-    <!-- Progress / Loading Banner -->
-    <div id="progressBanner" class="progress-banner hidden">
-      <div class="spinner"></div>
-      <div class="progress-info">
-        <h4 id="progressStatus">Processing Audio...</h4>
-        <p id="progressDetail">Extracting 16kHz audio stream and generating word timestamps.</p>
+    <!-- Real-time Percentage Progress Card with Cancel Action -->
+    <div id="progressBanner" class="progress-card hidden">
+      <div class="progress-header">
+        <div class="progress-title-wrap">
+          <div class="spinner-pulse" id="progressSpinner"></div>
+          <div>
+            <h4 id="progressStatus" class="progress-title">1/3 Uploading Media...</h4>
+            <p id="progressDetail" class="progress-subtitle">Uploading file and extracting 16kHz audio stream.</p>
+          </div>
+        </div>
+        <div class="progress-actions-wrap">
+          <div class="progress-pct-badge" id="progressPctBadge">0%</div>
+          <button id="cancelProcessBtn" class="btn btn-cancel" title="Cancel in-progress operation">
+            <i class="fa-solid fa-circle-xmark"></i> Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Progress Track -->
+      <div class="progress-track">
+        <div id="progressBarFill" class="progress-bar-fill" style="width: 0%"></div>
+      </div>
+
+      <!-- Pipeline Steps Row -->
+      <div class="progress-steps-row">
+        <div class="prog-step active" id="progStepUpload">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <span>1. Upload & Normalize</span>
+        </div>
+        <div class="prog-step" id="progStepTranscribe">
+          <i class="fa-solid fa-microphone-lines"></i>
+          <span>2. Speech-to-Text</span>
+        </div>
+        <div class="prog-step" id="progStepAnalyze">
+          <i class="fa-solid fa-brain"></i>
+          <span>3. AI Intelligence</span>
+        </div>
+      </div>
+
+      <!-- Real-time Live Ticker -->
+      <div id="progressLiveTicker" class="progress-live-ticker hidden">
+        <i class="fa-solid fa-wave-square ticker-icon"></i>
+        <span id="tickerText">Initializing transcription engine...</span>
       </div>
     </div>
 
-    <!-- Active Meeting Workspace (Shown after processing) -->
+    <!-- Active Meeting Workspace -->
     <section id="workspaceSection" class="workspace-section hidden">
       <!-- Meeting Overview Strip -->
       <div class="meeting-strip">
         <div class="strip-info">
-          <span class="file-badge"><i class="fa-solid fa-file-video"></i> <span id="stripFileName">meeting.mp4</span></span>
-          <span class="meta-pill"><i class="fa-solid fa-clock"></i> <span id="stripDuration">00:00</span></span>
+          <span class="file-badge">
+            <i class="fa-solid fa-file-video"></i> 
+            <span id="stripFileName">meeting.mp4</span>
+            <span id="audioVisualizer" class="audio-visualizer-icon">
+              <span></span><span></span><span></span>
+            </span>
+          </span>
           <span class="meta-pill"><i class="fa-solid fa-language"></i> <span id="stripLanguage">EN</span></span>
           <span id="stripSentiment" class="sentiment-pill sentiment-neutral">Neutral Tone</span>
         </div>
         <div class="strip-actions">
           <button id="reanalyzeBtn" class="btn btn-sm btn-outline">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Analyze with AI
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Analyze
           </button>
           <button id="newMeetingBtn" class="btn btn-sm btn-secondary">
             <i class="fa-solid fa-plus"></i> New Meeting
           </button>
+          <button id="deleteSessionBtn" class="btn btn-sm btn-danger-soft" title="Permanently delete this meeting recording and free disk space">
+            <i class="fa-solid fa-trash-can"></i> Delete Data
+          </button>
+        </div>
+      </div>
+
+      <!-- TOP EXECUTIVE KPI METRIC CARDS -->
+      <div class="kpi-grid">
+        <div class="kpi-card kpi-duration">
+          <div class="kpi-icon"><i class="fa-solid fa-clock"></i></div>
+          <div class="kpi-content">
+            <span id="kpiDuration" class="kpi-value">00:00</span>
+            <span class="kpi-label">Duration</span>
+          </div>
+        </div>
+        <div class="kpi-card kpi-words">
+          <div class="kpi-icon"><i class="fa-solid fa-comment-dots"></i></div>
+          <div class="kpi-content">
+            <span id="kpiWords" class="kpi-value">0</span>
+            <span id="kpiPace" class="kpi-label">Words (~0 WPM)</span>
+          </div>
+        </div>
+        <div class="kpi-card kpi-actions">
+          <div class="kpi-icon"><i class="fa-solid fa-list-check"></i></div>
+          <div class="kpi-content">
+            <span id="kpiActionCount" class="kpi-value">0</span>
+            <span class="kpi-label">Action Items</span>
+          </div>
+        </div>
+        <div class="kpi-card kpi-decisions">
+          <div class="kpi-icon"><i class="fa-solid fa-handshake"></i></div>
+          <div class="kpi-content">
+            <span id="kpiDecisionCount" class="kpi-value">0</span>
+            <span class="kpi-label">Key Decisions</span>
+          </div>
+        </div>
+        <div class="kpi-card kpi-sentiment">
+          <div class="kpi-icon"><i class="fa-solid fa-chart-pie"></i></div>
+          <div class="kpi-content">
+            <span id="kpiSentimentText" class="kpi-value">Neutral</span>
+            <span class="kpi-label">Meeting Tone</span>
+          </div>
         </div>
       </div>
 
@@ -132,17 +336,28 @@
                 <video id="mediaPlayer" controls class="custom-player" preload="metadata"></video>
                 <audio id="audioPlayer" controls class="custom-player hidden"></audio>
               </div>
-              <div class="media-hint">
-                <i class="fa-solid fa-circle-info"></i> Click any transcript row on the right to jump playback to that exact second.
+              <div class="player-controls-strip">
+                <div class="speed-pills">
+                  <span class="form-hint" style="margin-right: 6px; font-weight:600;">Speed:</span>
+                  <button class="speed-pill" data-speed="0.75">0.75x</button>
+                  <button class="speed-pill active" data-speed="1.0">1.0x</button>
+                  <button class="speed-pill" data-speed="1.25">1.25x</button>
+                  <button class="speed-pill" data-speed="1.5">1.5x</button>
+                  <button class="speed-pill" data-speed="2.0">2.0x</button>
+                </div>
+                <div class="media-hint">
+                  <i class="fa-solid fa-circle-info"></i> Click any row to jump playback.
+                </div>
               </div>
             </div>
 
-            <!-- Right: Synced Interactive Subtitle List -->
+            <!-- Right: Synced Interactive Subtitle List with Word Karaoke -->
             <div class="transcript-column">
               <div class="transcript-header">
                 <div class="search-box">
                   <i class="fa-solid fa-magnifying-glass"></i>
                   <input type="text" id="transcriptSearch" placeholder="Search transcript keywords...">
+                  <span id="searchCount" class="search-count hidden">0 matches</span>
                 </div>
                 <div class="transcript-actions">
                   <button id="copyTranscriptBtn" class="btn btn-sm btn-secondary" title="Copy full transcript">
@@ -165,8 +380,10 @@
           <div class="summary-layout">
             <div class="card summary-card">
               <div class="card-header">
-                <h3 class="card-title"><i class="fa-solid fa-sparkles text-primary"></i> Executive Summary (TL;DR)</h3>
-                <span id="summarySentimentBadge" class="badge"></span>
+                <h3 class="card-title"><i class="fa-solid fa-wand-magic-sparkles text-primary"></i> Executive Summary (TL;DR)</h3>
+                <button id="copySummaryBtn" class="btn btn-sm btn-secondary" title="Copy Summary">
+                  <i class="fa-regular fa-copy"></i> Copy
+                </button>
               </div>
               <div class="card-body">
                 <h2 id="aiMeetingTitle" class="ai-meeting-title">Loading title...</h2>
@@ -203,19 +420,28 @@
           <div class="actions-layout">
             <div class="card">
               <div class="card-header">
-                <h3 class="card-title"><i class="fa-solid fa-clipboard-check text-primary"></i> Action Items Table</h3>
-                <span id="actionItemCount" class="badge badge-primary">0 Items</span>
+                <h3 class="card-title"><i class="fa-solid fa-clipboard-check text-primary"></i> Action Items Tracker</h3>
+                <span id="actionItemCountBadge" class="badge priority-medium">0 Tasks</span>
+              </div>
+              <div class="table-filter-bar">
+                <div class="filter-pills">
+                  <button class="filter-pill active" data-filter="all">All</button>
+                  <button class="filter-pill" data-filter="high">High Priority</button>
+                  <button class="filter-pill" data-filter="open">Open</button>
+                  <button class="filter-pill" data-filter="completed">Completed</button>
+                </div>
+                <span class="form-hint"><i class="fa-solid fa-info-circle"></i> Click the status badge to toggle task completion.</span>
               </div>
               <div class="card-body table-responsive">
                 <table class="data-table">
                   <thead>
                     <tr>
-                      <th style="width: 50px;">#</th>
+                      <th style="width: 40px;">#</th>
                       <th>Action Task</th>
                       <th>Assignee</th>
                       <th>Deadline</th>
                       <th>Priority</th>
-                      <th>Status</th>
+                      <th>Status (Toggle)</th>
                     </tr>
                   </thead>
                   <tbody id="actionItemsTableBody">
@@ -244,24 +470,25 @@
             <div class="chat-header">
               <div>
                 <h3 class="card-title"><i class="fa-solid fa-robot text-primary"></i> Conversational Intelligence</h3>
-                <p class="chat-subtitle">Ask anything about this meeting; answers are grounded with timestamp citations.</p>
+                <p class="chat-subtitle">Ask anything about this meeting; answers include interactive timestamp citations.</p>
               </div>
               <div class="chat-presets">
                 <button class="preset-chip" onclick="askPreset('What were the primary decisions made?')">What was decided?</button>
                 <button class="preset-chip" onclick="askPreset('Who has action items assigned to them?')">Who has tasks?</button>
                 <button class="preset-chip" onclick="askPreset('Was any budget or deadline mentioned?')">Budgets & Deadlines</button>
+                <button class="preset-chip" onclick="askPreset('Summarize the meeting in 3 bullet points.')">3-Bullet Summary</button>
               </div>
             </div>
             <div id="chatMessages" class="chat-messages">
               <div class="message assistant-msg">
                 <div class="msg-avatar"><i class="fa-solid fa-robot"></i></div>
                 <div class="msg-body">
-                  Hello! I have reviewed the full recording transcript. What would you like to know about this conversation?
+                  Hello! I have analyzed the complete recording transcript. Ask me anything about what was discussed, agreed upon, or assigned.
                 </div>
               </div>
             </div>
             <div class="chat-input-bar">
-              <input type="text" id="chatInput" placeholder="Ask a question about this meeting (e.g., 'What did John say about Q3 roadmap?')...">
+              <input type="text" id="chatInput" placeholder="Ask a question about this meeting (e.g., 'What was decided about the project deadline?')...">
               <button id="sendChatBtn" class="btn btn-primary">
                 <i class="fa-solid fa-paper-plane"></i>
               </button>
@@ -276,18 +503,28 @@
               <div class="export-icon pdf-icon"><i class="fa-solid fa-file-pdf"></i></div>
               <h3>Formal MoM (PDF)</h3>
               <p>Formatted academic/corporate Minutes of Meeting document with executive summary, tables, and decisions.</p>
-              <button id="downloadPdfBtn" class="btn btn-primary btn-block">
-                <i class="fa-solid fa-download"></i> Download PDF Report
-              </button>
+              <div class="dual-btn-row">
+                <button id="previewPdfBtn" class="btn btn-secondary">
+                  <i class="fa-solid fa-eye"></i> Preview
+                </button>
+                <button id="downloadPdfBtn" class="btn btn-primary">
+                  <i class="fa-solid fa-download"></i> Download PDF
+                </button>
+              </div>
             </div>
 
             <div class="card export-card">
               <div class="export-icon md-icon"><i class="fa-brands fa-markdown"></i></div>
               <h3>Markdown Report (.MD)</h3>
               <p>Clean GitHub-flavored markdown file containing all meeting analysis, tables, and timestamped transcript.</p>
-              <button id="downloadMdBtn" class="btn btn-secondary btn-block">
-                <i class="fa-solid fa-download"></i> Download Markdown
-              </button>
+              <div class="dual-btn-row">
+                <button id="copyMdBtn" class="btn btn-secondary">
+                  <i class="fa-regular fa-copy"></i> Copy
+                </button>
+                <button id="downloadMdBtn" class="btn btn-primary">
+                  <i class="fa-solid fa-download"></i> Download .MD
+                </button>
+              </div>
             </div>
 
             <div class="card export-card">
@@ -305,6 +542,23 @@
     </section>
   </main>
 
+  <!-- Live Document Preview Modal -->
+  <div id="docPreviewModal" class="modal-overlay hidden">
+    <div class="modal-content preview-modal-content">
+      <div class="modal-header">
+        <h3 id="previewModalTitle"><i class="fa-solid fa-file-lines text-primary"></i> Minutes of Meeting Preview</h3>
+        <button id="closePreviewBtn" class="btn-close">&times;</button>
+      </div>
+      <div id="previewDocBody" class="preview-doc-body">
+        <!-- Rendered preview content -->
+      </div>
+      <div class="modal-footer">
+        <button id="copyPreviewContentBtn" class="btn btn-secondary"><i class="fa-regular fa-copy"></i> Copy Content</button>
+        <button id="downloadFromPreviewBtn" class="btn btn-primary"><i class="fa-solid fa-download"></i> Download Document</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Settings Modal -->
   <div id="settingsModal" class="modal-overlay hidden">
     <div class="modal-content">
@@ -321,14 +575,59 @@
         <div class="form-group">
           <label for="geminiModelInput">Gemini Model:</label>
           <select id="geminiModelInput" class="form-select">
-            <option value="gemini-1.5-flash" selected>Gemini 1.5 Flash (Recommended: Fast & High Context)</option>
-            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning)</option>
-            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gemini-3.8-flash" selected>Gemini 3.8 Flash (Recommended: Ultra-Fast)</option>
+            <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+            <option value="gemini-flash-latest">Gemini Flash Latest</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
           </select>
         </div>
       </div>
       <div class="modal-footer">
         <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancel Confirmation Modal -->
+  <div id="cancelConfirmModal" class="modal-overlay hidden">
+    <div class="modal-content cancel-modal-box">
+      <div class="cancel-modal-icon-wrap">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <h3 class="cancel-modal-title">Cancel Operation?</h3>
+      <p class="cancel-modal-text">
+        Are you sure you want to cancel the current processing? Any upload progress and transcription work done so far will be safely stopped and cleared.
+      </p>
+      <div class="cancel-modal-actions">
+        <button id="cancelModalKeepBtn" class="btn btn-secondary">
+          Continue Processing
+        </button>
+        <button id="cancelModalConfirmBtn" class="btn btn-danger">
+          <i class="fa-solid fa-xmark"></i> Yes, Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permanent Delete Confirmation Modal -->
+  <div id="deleteConfirmModal" class="modal-overlay hidden">
+    <div class="modal-content delete-modal-box">
+      <div class="delete-modal-icon-wrap">
+        <i class="fa-solid fa-trash-can"></i>
+      </div>
+      <h3 class="delete-modal-title">Delete Meeting Data?</h3>
+      <p class="delete-modal-text">
+        This will <strong>permanently delete</strong> the raw video/audio file, extracted mono audio, transcript database, and all generated reports from your disk. This action cannot be undone.
+      </p>
+      <div class="delete-modal-meta-box">
+        <div class="del-row"><span>Meeting:</span> <strong id="delModalFileName">meeting.mp4</strong></div>
+        <div class="del-row"><span>Session ID:</span> <code id="delModalSessionId">--------</code></div>
+      </div>
+      <div class="delete-modal-actions">
+        <button id="deleteModalKeepBtn" class="btn btn-secondary">Keep Meeting</button>
+        <button id="deleteModalConfirmBtn" class="btn btn-danger">
+          <i class="fa-solid fa-trash-can"></i> Permanently Delete
+        </button>
       </div>
     </div>
   </div>

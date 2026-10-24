@@ -13,13 +13,14 @@ from core.intelligence.prompts import SYSTEM_MEETING_ANALYZER_PROMPT, SYSTEM_QA_
 
 class GeminiProvider(LLMProvider):
     """
-    Google Gemini implementation using official google.genai SDK for meeting intelligence and Q&A.
+    Google Gemini implementation using official google.genai SDK with automatic model resolution and fallback.
     """
 
     def __init__(self, api_key: Optional[str] = None, model_name: str = DEFAULT_GEMINI_MODEL):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "") or GEMINI_API_KEY
-        self.model_name = model_name
+        self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
         self.client: Optional[genai.Client] = None
+        self._resolved_model: Optional[str] = None
 
         if self.api_key and self.api_key != "your_gemini_api_key_here":
             self.client = genai.Client(api_key=self.api_key)
@@ -32,8 +33,63 @@ class GeminiProvider(LLMProvider):
         if self.client is None or self.api_key != key:
             self.api_key = key
             self.client = genai.Client(api_key=key)
+            self._resolved_model = None  # Reset resolution for new client
 
         return self.client
+
+    def _resolve_model_name(self, client: genai.Client) -> str:
+        """
+        Returns the resolved model name, defaulting to gemini-3.8-flash.
+        """
+        if self._resolved_model:
+            return self._resolved_model
+        self._resolved_model = self.model_name or "gemini-3.8-flash"
+        return self._resolved_model
+
+    def _generate_with_retry(self, client: genai.Client, contents: str, config: types.GenerateContentConfig):
+        """
+        Calls generate_content with automatic model fallback in case of 404 NOT_FOUND.
+        """
+        primary_model = self._resolve_model_name(client)
+        fallback_chain = [
+            primary_model,
+            "gemini-3.8-flash",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash"
+        ]
+
+        last_error = None
+        attempted = set()
+
+        for model_candidate in fallback_chain:
+            if not model_candidate or model_candidate in attempted:
+                continue
+            attempted.add(model_candidate)
+
+            try:
+                response = client.models.generate_content(
+                    model=model_candidate,
+                    contents=contents,
+                    config=config
+                )
+                self.model_name = model_candidate
+                self._resolved_model = model_candidate
+                return response
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                # If 404 or unsupported, continue to next model candidate
+                if "404" in err_str or "not found" in err_str or "not supported" in err_str:
+                    continue
+                # For non-404 errors (like quota or auth), raise directly
+                raise e
+
+        raise last_error or RuntimeError("Failed to generate content with available Gemini models.")
 
     def _build_transcript_text(self, transcript: FullTranscript) -> str:
         """Formats the transcript with timestamps for context."""
@@ -62,8 +118,8 @@ Analyze the meeting above according to the system instructions and output strict
             response_mime_type="application/json"
         )
 
-        response = client.models.generate_content(
-            model=self.model_name,
+        response = self._generate_with_retry(
+            client=client,
             contents=user_prompt,
             config=config
         )
@@ -104,8 +160,8 @@ Question:
             system_instruction=SYSTEM_QA_PROMPT
         )
 
-        response = client.models.generate_content(
-            model=self.model_name,
+        response = self._generate_with_retry(
+            client=client,
             contents=user_prompt,
             config=config
         )

@@ -4,6 +4,13 @@ let currentTranscript = null;
 let currentAnalysis = null;
 let activePlayer = null;
 let transcriptSegments = [];
+let actionItemsList = [];
+let currentActionFilter = 'all';
+
+// Active network operations for cancellation
+let activeXhr = null;
+let activeEventSource = null;
+let isProcessingCancelled = false;
 
 // DOM Elements
 const dropzone = document.getElementById('dropzone');
@@ -14,25 +21,60 @@ const langSelect = document.getElementById('langSelect');
 const progressBanner = document.getElementById('progressBanner');
 const progressStatus = document.getElementById('progressStatus');
 const progressDetail = document.getElementById('progressDetail');
+const progressPctBadge = document.getElementById('progressPctBadge');
+const progressBarFill = document.getElementById('progressBarFill');
+const progStepUpload = document.getElementById('progStepUpload');
+const progStepTranscribe = document.getElementById('progStepTranscribe');
+const progStepAnalyze = document.getElementById('progStepAnalyze');
+const progressLiveTicker = document.getElementById('progressLiveTicker');
+const tickerText = document.getElementById('tickerText');
+const cancelProcessBtn = document.getElementById('cancelProcessBtn');
+const cancelConfirmModal = document.getElementById('cancelConfirmModal');
+const cancelModalKeepBtn = document.getElementById('cancelModalKeepBtn');
+const cancelModalConfirmBtn = document.getElementById('cancelModalConfirmBtn');
+
+// Delete & Persistence Selectors
+const deleteSessionBtn = document.getElementById('deleteSessionBtn');
+const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+const delModalFileName = document.getElementById('delModalFileName');
+const delModalSessionId = document.getElementById('delModalSessionId');
+const deleteModalKeepBtn = document.getElementById('deleteModalKeepBtn');
+const deleteModalConfirmBtn = document.getElementById('deleteModalConfirmBtn');
+
+const recentMeetingsSection = document.getElementById('recentMeetingsSection');
+const recentMeetingsGrid = document.getElementById('recentMeetingsGrid');
+const recentCountBadge = document.getElementById('recentCountBadge');
+const refreshRecentBtn = document.getElementById('refreshRecentBtn');
+let sessionToDelete = null;
+
 const uploadSection = document.getElementById('uploadSection');
 const workspaceSection = document.getElementById('workspaceSection');
 
 const mediaPlayer = document.getElementById('mediaPlayer');
 const audioPlayer = document.getElementById('audioPlayer');
+const audioVisualizer = document.getElementById('audioVisualizer');
 const transcriptList = document.getElementById('transcriptList');
 const transcriptSearch = document.getElementById('transcriptSearch');
+const searchCount = document.getElementById('searchCount');
 
-// Metadata & Intelligence Elements
+// Strip & KPI Elements
 const stripFileName = document.getElementById('stripFileName');
-const stripDuration = document.getElementById('stripDuration');
 const stripLanguage = document.getElementById('stripLanguage');
 const stripSentiment = document.getElementById('stripSentiment');
+const kpiDuration = document.getElementById('kpiDuration');
+const kpiWords = document.getElementById('kpiWords');
+const kpiPace = document.getElementById('kpiPace');
+const kpiActionCount = document.getElementById('kpiActionCount');
+const kpiDecisionCount = document.getElementById('kpiDecisionCount');
+const kpiSentimentText = document.getElementById('kpiSentimentText');
+
+// Intelligence Tab Elements
 const aiMeetingTitle = document.getElementById('aiMeetingTitle');
 const aiExecutiveSummary = document.getElementById('aiExecutiveSummary');
 const topicsContainer = document.getElementById('topicsContainer');
 const takeawaysList = document.getElementById('takeawaysList');
 const actionItemsTableBody = document.getElementById('actionItemsTableBody');
-const actionItemCount = document.getElementById('actionItemCount');
+const actionItemCountBadge = document.getElementById('actionItemCountBadge');
 const decisionsContainer = document.getElementById('decisionsContainer');
 
 // Chat Elements
@@ -40,7 +82,7 @@ const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
 
-// Settings Elements
+// Settings & Preview Modal Elements
 const apiStatusBadge = document.getElementById('apiStatusBadge');
 const apiStatusText = document.getElementById('apiStatusText');
 const settingsModal = document.getElementById('settingsModal');
@@ -50,17 +92,29 @@ const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
 const geminiModelInput = document.getElementById('geminiModelInput');
 
+const docPreviewModal = document.getElementById('docPreviewModal');
+const closePreviewBtn = document.getElementById('closePreviewBtn');
+const previewDocBody = document.getElementById('previewDocBody');
+const copyPreviewContentBtn = document.getElementById('copyPreviewContentBtn');
+const downloadFromPreviewBtn = document.getElementById('downloadFromPreviewBtn');
+
 // ==========================================
-// Initialization & Settings
+// Initialization
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
   checkApiStatus();
   initTabNavigation();
   initDropzoneEvents();
   initPlayerEvents();
+  initSpeedControls();
+  initActionFilters();
   initChatEvents();
   initExportEvents();
   initSettingsModal();
+  initPreviewModal();
+  initCancelEvents();
+  initDeleteEvents();
+  initAutoRestoreAndHistory();
 });
 
 async function checkApiStatus() {
@@ -100,6 +154,252 @@ function initSettingsModal() {
   });
 }
 
+function initPreviewModal() {
+  closePreviewBtn.addEventListener('click', () => docPreviewModal.classList.add('hidden'));
+  copyPreviewContentBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(previewDocBody.innerText);
+    alert('Document content copied to clipboard!');
+  });
+  downloadFromPreviewBtn.addEventListener('click', () => {
+    if (currentSessionId) window.open(`/api/export/${currentSessionId}/pdf`, '_blank');
+  });
+}
+
+function initCancelEvents() {
+  if (cancelProcessBtn) {
+    cancelProcessBtn.addEventListener('click', () => {
+      if (cancelConfirmModal) cancelConfirmModal.classList.remove('hidden');
+    });
+  }
+
+  if (cancelModalKeepBtn) {
+    cancelModalKeepBtn.addEventListener('click', () => {
+      if (cancelConfirmModal) cancelConfirmModal.classList.add('hidden');
+    });
+  }
+
+  if (cancelModalConfirmBtn) {
+    cancelModalConfirmBtn.addEventListener('click', () => {
+      isProcessingCancelled = true;
+
+      // Abort active upload XHR if running
+      if (activeXhr) {
+        try { activeXhr.abort(); } catch (e) {}
+        activeXhr = null;
+      }
+
+      // Close active SSE transcription stream if running
+      if (activeEventSource) {
+        try { activeEventSource.close(); } catch (e) {}
+        activeEventSource = null;
+      }
+
+      // Reset file input
+      if (mediaFileInput) mediaFileInput.value = '';
+
+      // Reset UI back to clean upload studio
+      if (cancelConfirmModal) cancelConfirmModal.classList.add('hidden');
+      if (progressBanner) progressBanner.classList.add('hidden');
+      if (uploadSection) uploadSection.classList.remove('hidden');
+
+      setProgress({
+        percent: 0,
+        title: 'Operation Cancelled',
+        detail: 'The file upload / transcription was safely aborted.',
+        step: 'upload',
+        ticker: ''
+      });
+    });
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function openDeleteModal(sessionId, filename) {
+  sessionToDelete = sessionId;
+  if (delModalFileName) delModalFileName.textContent = filename || 'Meeting';
+  if (delModalSessionId) delModalSessionId.textContent = sessionId;
+  if (deleteConfirmModal) deleteConfirmModal.classList.remove('hidden');
+}
+
+function initDeleteEvents() {
+  if (deleteSessionBtn) {
+    deleteSessionBtn.addEventListener('click', () => {
+      if (currentSessionId) {
+        openDeleteModal(currentSessionId, stripFileName.textContent);
+      }
+    });
+  }
+
+  if (deleteModalKeepBtn) {
+    deleteModalKeepBtn.addEventListener('click', () => {
+      if (deleteConfirmModal) deleteConfirmModal.classList.add('hidden');
+      sessionToDelete = null;
+    });
+  }
+
+  if (deleteModalConfirmBtn) {
+    deleteModalConfirmBtn.addEventListener('click', async () => {
+      if (!sessionToDelete) return;
+      const targetId = sessionToDelete;
+      try {
+        const res = await fetch(`/api/session/${targetId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text());
+
+        deleteConfirmModal.classList.add('hidden');
+
+        // If currently viewing this session, reset back to clean upload studio
+        if (targetId === currentSessionId) {
+          localStorage.removeItem('active_meeting_session');
+          window.history.pushState(null, '', window.location.pathname);
+          workspaceSection.classList.add('hidden');
+          uploadSection.classList.remove('hidden');
+          if (activePlayer) activePlayer.pause();
+          currentSessionId = null;
+          currentTranscript = null;
+          currentAnalysis = null;
+        }
+
+        sessionToDelete = null;
+        loadRecentSessions();
+        alert('Meeting data and disk files permanently deleted.');
+      } catch (err) {
+        alert('Failed to delete meeting: ' + err.message);
+      }
+    });
+  }
+
+  if (refreshRecentBtn) {
+    refreshRecentBtn.addEventListener('click', () => {
+      loadRecentSessions();
+    });
+  }
+}
+
+async function restoreSession(sessionId) {
+  try {
+    const res = await fetch(`/api/session/${sessionId}`);
+    if (!res.ok) {
+      localStorage.removeItem('active_meeting_session');
+      window.history.pushState(null, '', window.location.pathname);
+      loadRecentSessions();
+      return;
+    }
+
+    const data = await res.json();
+    currentSessionId = data.session_id;
+    localStorage.setItem('active_meeting_session', currentSessionId);
+    window.history.pushState(null, '', `?session=${currentSessionId}`);
+
+    // Setup media player
+    setupPlayer(data.media_url, data.is_video);
+    stripFileName.textContent = data.filename;
+
+    // Restore Transcript
+    if (data.transcript) {
+      currentTranscript = data.transcript;
+      transcriptSegments = currentTranscript.segments || [];
+      updateKPIMetrics(currentTranscript);
+      renderTranscript(transcriptSegments);
+      stripLanguage.textContent = (currentTranscript.language || 'en').toUpperCase();
+    }
+
+    // Restore Analysis
+    if (data.analysis) {
+      currentAnalysis = data.analysis;
+      renderAnalysis(currentAnalysis);
+    } else if (currentSessionId) {
+      runAIAnalysis(currentSessionId);
+    }
+
+    // Switch views to workspace
+    uploadSection.classList.add('hidden');
+    progressBanner.classList.add('hidden');
+    workspaceSection.classList.remove('hidden');
+
+  } catch (err) {
+    console.error('Failed to restore session:', err);
+    loadRecentSessions();
+  }
+}
+
+async function loadRecentSessions() {
+  try {
+    const res = await fetch('/api/sessions');
+    if (!res.ok) return;
+    const sessions = await res.json();
+
+    if (!sessions || sessions.length === 0) {
+      if (recentMeetingsSection) recentMeetingsSection.classList.add('hidden');
+      return;
+    }
+
+    if (recentMeetingsSection) recentMeetingsSection.classList.remove('hidden');
+    if (recentCountBadge) recentCountBadge.textContent = `${sessions.length} saved`;
+    if (!recentMeetingsGrid) return;
+    recentMeetingsGrid.innerHTML = '';
+
+    sessions.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'recent-card';
+
+      const dateStr = s.created_at ? new Date(s.created_at * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent';
+      const durationStr = formatTime(s.duration || 0);
+
+      card.innerHTML = `
+        <div class="recent-card-top">
+          <h4 class="recent-card-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</h4>
+        </div>
+        <div class="recent-card-filename" title="${escapeHtml(s.filename)}"><i class="fa-solid fa-file-video"></i> ${escapeHtml(s.filename)}</div>
+        <div class="recent-card-meta">
+          <span><i class="fa-solid fa-clock"></i> ${durationStr}</span>
+          <span><i class="fa-solid fa-hard-drive"></i> ${s.size_mb} MB</span>
+          <span><i class="fa-solid fa-calendar"></i> ${dateStr}</span>
+        </div>
+        <div class="recent-card-actions">
+          <button class="btn btn-sm btn-primary recent-btn-open" data-session-id="${s.session_id}">
+            <i class="fa-solid fa-folder-open"></i> Open Meeting
+          </button>
+          <button class="btn btn-sm btn-danger-soft recent-btn-delete" data-session-id="${s.session_id}" data-filename="${escapeHtml(s.filename)}" title="Permanently delete from disk">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+      `;
+
+      card.querySelector('.recent-btn-open').addEventListener('click', () => {
+        restoreSession(s.session_id);
+      });
+
+      card.querySelector('.recent-btn-delete').addEventListener('click', () => {
+        openDeleteModal(s.session_id, s.filename);
+      });
+
+      recentMeetingsGrid.appendChild(card);
+    });
+
+  } catch (err) {
+    console.error('Failed to load recent sessions:', err);
+  }
+}
+
+function initAutoRestoreAndHistory() {
+  const params = new URLSearchParams(window.location.search);
+  const activeId = params.get('session') || localStorage.getItem('active_meeting_session');
+  if (activeId) {
+    restoreSession(activeId);
+  } else {
+    loadRecentSessions();
+  }
+}
+
 // ==========================================
 // Tabs Navigation
 // ==========================================
@@ -117,8 +417,16 @@ function initTabNavigation() {
   });
 
   document.getElementById('newMeetingBtn')?.addEventListener('click', () => {
-    if (confirm('Start a new meeting session?')) {
-      location.reload();
+    if (confirm('Start a new meeting session? Your current meeting will remain saved in history.')) {
+      localStorage.removeItem('active_meeting_session');
+      window.history.pushState(null, '', window.location.pathname);
+      if (activePlayer) activePlayer.pause();
+      currentSessionId = null;
+      currentTranscript = null;
+      currentAnalysis = null;
+      workspaceSection.classList.add('hidden');
+      uploadSection.classList.remove('hidden');
+      loadRecentSessions();
     }
   });
 
@@ -164,49 +472,198 @@ function initDropzoneEvents() {
 // ==========================================
 // Processing Pipeline
 // ==========================================
-async function processSelectedFile(file) {
-  try {
-    uploadSection.classList.add('hidden');
-    progressBanner.classList.remove('hidden');
-    progressStatus.textContent = '1/3 Uploading & Extracting Audio...';
-    progressDetail.textContent = `Processing "${file.name}" with FFmpeg (16kHz mono normalization).`;
+function setProgress({ percent, title, detail, step, ticker }) {
+  if (percent !== undefined) {
+    const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+    if (progressPctBadge) progressPctBadge.textContent = `${clamped}%`;
+    if (progressBarFill) progressBarFill.style.width = `${clamped}%`;
+  }
+  if (title && progressStatus) progressStatus.textContent = title;
+  if (detail && progressDetail) progressDetail.textContent = detail;
+  if (ticker !== undefined && progressLiveTicker) {
+    if (ticker) {
+      progressLiveTicker.classList.remove('hidden');
+      if (tickerText) tickerText.textContent = ticker;
+    } else {
+      progressLiveTicker.classList.add('hidden');
+    }
+  }
+  if (step) {
+    if (progStepUpload) {
+      progStepUpload.className = step === 'upload' ? 'prog-step active' : (step === 'transcribe' || step === 'analyze' || step === 'done' ? 'prog-step completed' : 'prog-step');
+    }
+    if (progStepTranscribe) {
+      progStepTranscribe.className = step === 'transcribe' ? 'prog-step active' : (step === 'analyze' || step === 'done' ? 'prog-step completed' : 'prog-step');
+    }
+    if (progStepAnalyze) {
+      progStepAnalyze.className = step === 'analyze' ? 'prog-step active' : (step === 'done' ? 'prog-step completed' : 'prog-step');
+    }
+  }
+}
 
-    // Step 1: Upload media & extract audio
+function uploadMediaWithProgress(file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    activeXhr = xhr;
     const formData = new FormData();
     formData.append('file', file);
 
-    const uploadRes = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData
+    xhr.upload.addEventListener('progress', (e) => {
+      if (isProcessingCancelled) return;
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
+        const totalMb = (e.total / (1024 * 1024)).toFixed(1);
+        setProgress({
+          percent: pct,
+          title: `1/3 Uploading Media (${pct}%)`,
+          detail: `Uploaded ${loadedMb} MB of ${totalMb} MB (${pct}% complete)...`,
+          step: 'upload',
+          ticker: `Uploading ${file.name} to server...`
+        });
+      }
     });
-    if (!uploadRes.ok) throw new Error(await uploadRes.text());
-    const uploadData = await uploadRes.json();
+
+    xhr.addEventListener('load', () => {
+      activeXhr = null;
+      if (isProcessingCancelled) return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          resolve(res);
+        } catch (err) {
+          reject(new Error('Invalid server response format during upload.'));
+        }
+      } else {
+        reject(new Error(xhr.responseText || `Upload failed with status ${xhr.status}`));
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      activeXhr = null;
+      if (!isProcessingCancelled) {
+        reject(new Error('Network connection error during upload.'));
+      }
+    });
+
+    xhr.addEventListener('abort', () => {
+      activeXhr = null;
+      // Intentionally aborted by user
+    });
+
+    xhr.open('POST', '/api/upload');
+    xhr.send(formData);
+  });
+}
+
+function transcribeAudioWithProgress(sessionId, modelSize, language) {
+  return new Promise((resolve, reject) => {
+    if (isProcessingCancelled) return;
+    setProgress({
+      percent: 0,
+      title: '2/3 Whisper Transcribing (0%)',
+      detail: `Loading Faster-Whisper ${modelSize} model with Silero VAD...`,
+      step: 'transcribe',
+      ticker: 'Warming up Whisper neural model...'
+    });
+
+    const params = new URLSearchParams();
+    if (modelSize) params.append('model_size', modelSize);
+    if (language && language !== 'auto') params.append('language', language);
+
+    const sseUrl = `/api/transcribe-stream/${sessionId}?${params.toString()}`;
+    const eventSource = new EventSource(sseUrl);
+    activeEventSource = eventSource;
+
+    eventSource.onmessage = (event) => {
+      if (isProcessingCancelled) {
+        eventSource.close();
+        activeEventSource = null;
+        return;
+      }
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'progress') {
+          const pct = data.percent || 0;
+          const curr = formatTime(data.current_time || 0);
+          const total = formatTime(data.total_duration || 0);
+          setProgress({
+            percent: pct,
+            title: `2/3 Whisper Transcribing (${pct}%)`,
+            detail: `Transcribed ${curr} / ${total} audio (${pct}%)`,
+            step: 'transcribe',
+            ticker: data.text ? `"${data.text}"` : 'Transcribing speech segments...'
+          });
+        } else if (data.type === 'complete') {
+          eventSource.close();
+          activeEventSource = null;
+          setProgress({
+            percent: 100,
+            title: '2/3 Transcription Complete (100%)',
+            detail: 'Timestamped transcript with word alignments generated.',
+            step: 'transcribe',
+            ticker: 'Speech-to-text complete!'
+          });
+          resolve(data.transcript);
+        } else if (data.type === 'error') {
+          eventSource.close();
+          activeEventSource = null;
+          if (!isProcessingCancelled) {
+            reject(new Error(data.message || 'Transcription error occurred.'));
+          }
+        }
+      } catch (err) {
+        console.error('SSE parse error:', err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      eventSource.close();
+      activeEventSource = null;
+      if (!isProcessingCancelled) {
+        reject(new Error('Transcription stream connection interrupted.'));
+      }
+    };
+  });
+}
+
+async function processSelectedFile(file) {
+  isProcessingCancelled = false;
+  try {
+    uploadSection.classList.add('hidden');
+    progressBanner.classList.remove('hidden');
+
+    // Step 1: Upload media & extract audio with live upload percentage
+    setProgress({
+      percent: 0,
+      title: '1/3 Uploading Media (0%)',
+      detail: `Preparing "${file.name}" for upload...`,
+      step: 'upload',
+      ticker: 'Initiating file transfer...'
+    });
+
+    const uploadData = await uploadMediaWithProgress(file);
+    if (isProcessingCancelled || !uploadData) return;
     currentSessionId = uploadData.session_id;
+    localStorage.setItem('active_meeting_session', currentSessionId);
+    window.history.pushState(null, '', `?session=${currentSessionId}`);
 
     // Setup Media Player
     setupPlayer(uploadData.media_url, uploadData.is_video);
     stripFileName.textContent = uploadData.filename;
 
-    // Step 2: Transcribe
-    progressStatus.textContent = '2/3 Generating Timestamped Transcript...';
-    progressDetail.textContent = `Running Whisper (${modelSelect.value}) with Silero VAD filtering.`;
-
-    const transcribeRes = await fetch('/api/transcribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: currentSessionId,
-        model_size: modelSelect.value,
-        language: langSelect.value
-      })
-    });
-    if (!transcribeRes.ok) throw new Error(await transcribeRes.text());
-    currentTranscript = await transcribeRes.json();
+    // Step 2: Transcribe with live streaming percentage (0% to 100%)
+    currentTranscript = await transcribeAudioWithProgress(
+      currentSessionId,
+      modelSelect.value,
+      langSelect.value
+    );
+    if (isProcessingCancelled || !currentTranscript) return;
     transcriptSegments = currentTranscript.segments || [];
 
-    // Render Transcript & Metadata
+    // Calculate Metrics & Render Transcript
+    updateKPIMetrics(currentTranscript);
     renderTranscript(transcriptSegments);
-    stripDuration.textContent = formatTime(currentTranscript.duration);
     stripLanguage.textContent = (currentTranscript.language || 'en').toUpperCase();
 
     // Show workspace
@@ -217,11 +674,32 @@ async function processSelectedFile(file) {
     runAIAnalysis(currentSessionId);
 
   } catch (err) {
+    if (isProcessingCancelled) return;
     console.error(err);
     alert('Processing Error: ' + err.message);
     progressBanner.classList.add('hidden');
     uploadSection.classList.remove('hidden');
   }
+}
+
+function updateKPIMetrics(transcript) {
+  const durationSec = transcript.duration || 0;
+  kpiDuration.textContent = formatTime(durationSec);
+
+  // Total word count
+  let totalWords = 0;
+  if (transcript.segments) {
+    transcript.segments.forEach(s => {
+      if (s.words && s.words.length > 0) totalWords += s.words.length;
+      else if (s.text) totalWords += s.text.trim().split(/\s+/).length;
+    });
+  }
+  kpiWords.textContent = totalWords.toLocaleString();
+
+  // Words per minute (WPM)
+  const durationMinutes = durationSec / 60;
+  const wpm = durationMinutes > 0 ? Math.round(totalWords / durationMinutes) : 0;
+  kpiPace.textContent = `Words (~${wpm} WPM)`;
 }
 
 async function runAIAnalysis(sessionId) {
@@ -253,7 +731,7 @@ async function runAIAnalysis(sessionId) {
 }
 
 // ==========================================
-// Rendering Functions
+// Rendering Functions & Word Karaoke
 // ==========================================
 function setupPlayer(mediaUrl, isVideo) {
   if (isVideo) {
@@ -267,6 +745,25 @@ function setupPlayer(mediaUrl, isVideo) {
     audioPlayer.src = mediaUrl;
     activePlayer = audioPlayer;
   }
+
+  // Audio visualizer hook
+  const onPlay = () => audioVisualizer.classList.add('playing');
+  const onPause = () => audioVisualizer.classList.remove('playing');
+
+  activePlayer.addEventListener('play', onPlay);
+  activePlayer.addEventListener('pause', onPause);
+  activePlayer.addEventListener('ended', onPause);
+}
+
+function initSpeedControls() {
+  document.querySelectorAll('.speed-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.speed-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      const rate = parseFloat(pill.dataset.speed) || 1.0;
+      if (activePlayer) activePlayer.playbackRate = rate;
+    });
+  });
 }
 
 function renderTranscript(segments) {
@@ -283,9 +780,22 @@ function renderTranscript(segments) {
     row.dataset.end = seg.end;
     row.id = `seg-${seg.id}`;
 
+    // Render word spans for word-level karaoke if words are present
+    let wordsHtml = '';
+    if (seg.words && seg.words.length > 0) {
+      wordsHtml = seg.words.map((w, wIdx) => {
+        return `<span class="word-span" data-start="${w.start}" data-end="${w.end}" id="w-${seg.id}-${wIdx}">${escapeHtml(w.word)}</span>`;
+      }).join(' ');
+    } else {
+      wordsHtml = escapeHtml(seg.text);
+    }
+
     row.innerHTML = `
       <div class="transcript-time">${formatTime(seg.start)}</div>
-      <div class="transcript-text">${escapeHtml(seg.text)}</div>
+      <div class="transcript-text">${wordsHtml}</div>
+      <button class="copy-line-btn" title="Copy quote with timestamp" onclick="event.stopPropagation(); copyLine(${seg.start}, '${escapeQuote(seg.text)}')">
+        <i class="fa-regular fa-copy"></i>
+      </button>
     `;
 
     row.addEventListener('click', () => {
@@ -299,6 +809,12 @@ function renderTranscript(segments) {
   });
 }
 
+window.copyLine = function(sec, text) {
+  const line = `[${formatTime(sec)}] "${text}"`;
+  navigator.clipboard.writeText(line);
+  alert(`Copied: ${line}`);
+};
+
 function renderAnalysis(analysis) {
   // Title & Summary
   aiMeetingTitle.textContent = analysis.meeting_title || 'Meeting Summary';
@@ -308,6 +824,7 @@ function renderAnalysis(analysis) {
   const sentiment = analysis.overall_sentiment || 'Neutral';
   stripSentiment.textContent = `${sentiment} Tone`;
   stripSentiment.className = `sentiment-pill sentiment-${sentiment.toLowerCase()}`;
+  kpiSentimentText.textContent = sentiment;
 
   // Key Topics
   topicsContainer.innerHTML = '';
@@ -337,31 +854,16 @@ function renderAnalysis(analysis) {
     });
   }
 
-  // Action Items Table
-  actionItemsTableBody.innerHTML = '';
-  const items = analysis.action_items || [];
-  actionItemCount.textContent = `${items.length} Items`;
-  if (items.length > 0) {
-    items.forEach(item => {
-      const tr = document.createElement('tr');
-      const pClass = `priority-${(item.priority || 'medium').toLowerCase()}`;
-      tr.innerHTML = `
-        <td><strong>${item.id}</strong></td>
-        <td>${escapeHtml(item.task)}</td>
-        <td><i class="fa-regular fa-user" style="margin-right:4px;"></i> ${escapeHtml(item.assignee)}</td>
-        <td><i class="fa-regular fa-calendar" style="margin-right:4px;"></i> ${escapeHtml(item.deadline)}</td>
-        <td><span class="badge ${pClass}">${escapeHtml(item.priority)}</span></td>
-        <td><span class="badge" style="background:rgba(255,255,255,0.06);">${escapeHtml(item.status)}</span></td>
-      `;
-      actionItemsTableBody.appendChild(tr);
-    });
-  } else {
-    actionItemsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#9ca3af; padding:20px;">No explicit action items found.</td></tr>';
-  }
+  // Action Items
+  actionItemsList = analysis.action_items || [];
+  kpiActionCount.textContent = actionItemsList.length;
+  actionItemCountBadge.textContent = `${actionItemsList.length} Tasks`;
+  renderActionItemsTable();
 
   // Key Decisions
   decisionsContainer.innerHTML = '';
   const decisions = analysis.key_decisions || [];
+  kpiDecisionCount.textContent = decisions.length;
   if (decisions.length > 0) {
     decisions.forEach(d => {
       const card = document.createElement('div');
@@ -378,13 +880,87 @@ function renderAnalysis(analysis) {
 }
 
 // ==========================================
-// Synced Player & Subtitle Highlighting
+// Interactive Action Items Tracker
+// ==========================================
+function initActionFilters() {
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentActionFilter = btn.dataset.filter;
+      renderActionItemsTable();
+    });
+  });
+}
+
+function renderActionItemsTable() {
+  actionItemsTableBody.innerHTML = '';
+  if (!actionItemsList || actionItemsList.length === 0) {
+    actionItemsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#9ca3af; padding:20px;">No action items detected.</td></tr>';
+    return;
+  }
+
+  const filtered = actionItemsList.filter(item => {
+    if (currentActionFilter === 'all') return true;
+    if (currentActionFilter === 'high') return (item.priority || '').toLowerCase() === 'high';
+    if (currentActionFilter === 'open') return (item.status || '').toLowerCase() === 'open';
+    if (currentActionFilter === 'completed') return (item.status || '').toLowerCase() === 'completed';
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    actionItemsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#9ca3af; padding:20px;">No items match the selected filter.</td></tr>';
+    return;
+  }
+
+  filtered.forEach(item => {
+    const tr = document.createElement('tr');
+    const isDone = (item.status || '').toLowerCase() === 'completed';
+    if (isDone) tr.className = 'task-completed';
+
+    const pClass = `priority-${(item.priority || 'medium').toLowerCase()}`;
+    const statusClass = isDone ? 'status-completed' : (item.status === 'In Progress' ? 'status-in-progress' : 'status-open');
+    const statusIcon = isDone ? 'fa-circle-check' : (item.status === 'In Progress' ? 'fa-spinner' : 'fa-circle-dot');
+
+    tr.innerHTML = `
+      <td><strong>${item.id}</strong></td>
+      <td class="task-text-col">${escapeHtml(item.task)}</td>
+      <td><i class="fa-regular fa-user" style="margin-right:4px;"></i> ${escapeHtml(item.assignee)}</td>
+      <td><i class="fa-regular fa-calendar" style="margin-right:4px;"></i> ${escapeHtml(item.deadline)}</td>
+      <td><span class="badge ${pClass}">${escapeHtml(item.priority)}</span></td>
+      <td>
+        <button class="task-status-btn ${statusClass}" onclick="toggleTaskStatus(${item.id})">
+          <i class="fa-regular ${statusIcon}"></i> ${escapeHtml(item.status || 'Open')}
+        </button>
+      </td>
+    `;
+    actionItemsTableBody.appendChild(tr);
+  });
+}
+
+window.toggleTaskStatus = function(taskId) {
+  const item = actionItemsList.find(i => i.id === taskId);
+  if (!item) return;
+
+  // Cycle status: Open -> In Progress -> Completed -> Open
+  if (item.status === 'Open') item.status = 'In Progress';
+  else if (item.status === 'In Progress') item.status = 'Completed';
+  else item.status = 'Open';
+
+  renderActionItemsTable();
+};
+
+// ==========================================
+// Synced Player & Word Karaoke Engine
 // ==========================================
 function initPlayerEvents() {
+  let activeWordSpan = null;
+
   const handleTimeUpdate = (e) => {
     const curTime = e.target.currentTime;
     let activeRow = null;
 
+    // Line-level highlight
     document.querySelectorAll('.transcript-row').forEach(row => {
       const start = parseFloat(row.dataset.start);
       const end = parseFloat(row.dataset.end);
@@ -397,13 +973,29 @@ function initPlayerEvents() {
     });
 
     if (activeRow) {
-      // Smoothly scroll active row into view within container
+      // Word-level karaoke highlight inside the active row
+      const wordSpans = activeRow.querySelectorAll('.word-span');
+      wordSpans.forEach(w => {
+        const wStart = parseFloat(w.dataset.start);
+        const wEnd = parseFloat(w.dataset.end);
+        if (curTime >= wStart && curTime <= wEnd) {
+          if (activeWordSpan !== w) {
+            if (activeWordSpan) activeWordSpan.classList.remove('word-active');
+            w.classList.add('word-active');
+            activeWordSpan = w;
+          }
+        } else {
+          w.classList.remove('word-active');
+        }
+      });
+
+      // Smooth scrolling
       const containerTop = transcriptList.scrollTop;
       const containerHeight = transcriptList.clientHeight;
       const rowTop = activeRow.offsetTop - transcriptList.offsetTop;
 
-      if (rowTop < containerTop || rowTop > (containerTop + containerHeight - 60)) {
-        transcriptList.scrollTo({ top: rowTop - 40, behavior: 'smooth' });
+      if (rowTop < containerTop || rowTop > (containerTop + containerHeight - 80)) {
+        transcriptList.scrollTo({ top: rowTop - 50, behavior: 'smooth' });
       }
     }
   };
@@ -411,23 +1003,31 @@ function initPlayerEvents() {
   mediaPlayer.addEventListener('timeupdate', handleTimeUpdate);
   audioPlayer.addEventListener('timeupdate', handleTimeUpdate);
 
-  // Keyword search
+  // Keyword search with match counter
   transcriptSearch.addEventListener('input', (e) => {
     const term = e.target.value.toLowerCase().trim();
+    let matches = 0;
+
     document.querySelectorAll('.transcript-row').forEach(row => {
       const textElem = row.querySelector('.transcript-text');
       const text = textElem.textContent;
       if (!term) {
         row.style.display = 'flex';
-        textElem.innerHTML = escapeHtml(text);
+        searchCount.classList.add('hidden');
       } else if (text.toLowerCase().includes(term)) {
         row.style.display = 'flex';
+        matches++;
         const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
         textElem.innerHTML = escapeHtml(text).replace(regex, '<mark class="highlight-term">$1</mark>');
       } else {
         row.style.display = 'none';
       }
     });
+
+    if (term) {
+      searchCount.textContent = `${matches} match${matches === 1 ? '' : 'es'}`;
+      searchCount.classList.remove('hidden');
+    }
   });
 
   // Copy full transcript
@@ -435,6 +1035,14 @@ function initPlayerEvents() {
     if (currentTranscript?.plain_text) {
       navigator.clipboard.writeText(currentTranscript.plain_text);
       alert('Full transcript copied to clipboard!');
+    }
+  });
+
+  // Copy Executive Summary
+  document.getElementById('copySummaryBtn')?.addEventListener('click', () => {
+    if (aiExecutiveSummary.innerText) {
+      navigator.clipboard.writeText(aiExecutiveSummary.innerText);
+      alert('Executive summary copied to clipboard!');
     }
   });
 }
@@ -450,7 +1058,8 @@ function initChatEvents() {
     appendChatMessage('user', q);
     chatInput.value = '';
 
-    const assistantMsg = appendChatMessage('assistant', 'Thinking and searching transcript...');
+    // Show wave typing indicator
+    const assistantMsg = appendChatMessage('assistant', '<div class="typing-dots"><span></span><span></span><span></span></div>', true);
 
     try {
       const res = await fetch('/api/ask', {
@@ -468,7 +1077,7 @@ function initChatEvents() {
       const data = await res.json();
       let formattedAnswer = escapeHtml(data.answer);
 
-      // Convert bracket timestamps like [01:23] into clickable pills
+      // Convert bracket timestamps into clickable pills
       formattedAnswer = formattedAnswer.replace(/\[(\d{1,2}:\d{2})(?:\s*-\s*\d{1,2}:\d{2})?\]/g, (match, startTime) => {
         const seconds = parseTimeToSeconds(startTime);
         return `<span class="timestamp-cite" onclick="seekTo(${seconds})">${match}</span>`;
@@ -493,12 +1102,12 @@ function askPreset(question) {
   sendChatBtn.click();
 }
 
-function appendChatMessage(sender, text) {
+function appendChatMessage(sender, text, isHtml = false) {
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${sender === 'user' ? 'user-msg' : 'assistant-msg'}`;
   msgDiv.innerHTML = `
     <div class="msg-avatar"><i class="fa-solid ${sender === 'user' ? 'fa-user' : 'fa-robot'}"></i></div>
-    <div class="msg-body">${escapeHtml(text)}</div>
+    <div class="msg-body">${isHtml ? text : escapeHtml(text)}</div>
   `;
   chatMessages.appendChild(msgDiv);
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -514,9 +1123,27 @@ window.seekTo = function(seconds) {
 };
 
 // ==========================================
-// Exports
+// Exports & Live Document Preview
 // ==========================================
 function initExportEvents() {
+  // Live Preview PDF Modal
+  document.getElementById('previewPdfBtn')?.addEventListener('click', () => {
+    if (!currentAnalysis) {
+      alert('Meeting analysis is not ready yet.');
+      return;
+    }
+    const docText = generateMoMDocumentText();
+    previewDocBody.innerText = docText;
+    docPreviewModal.classList.remove('hidden');
+  });
+
+  // Copy Markdown
+  document.getElementById('copyMdBtn')?.addEventListener('click', () => {
+    const docText = generateMoMDocumentText();
+    navigator.clipboard.writeText(docText);
+    alert('Full Markdown report copied to clipboard!');
+  });
+
   document.getElementById('downloadPdfBtn')?.addEventListener('click', () => {
     if (currentSessionId) window.open(`/api/export/${currentSessionId}/pdf`, '_blank');
   });
@@ -532,6 +1159,35 @@ function initExportEvents() {
   document.getElementById('downloadSrtBtn')?.addEventListener('click', () => {
     if (currentSessionId) window.open(`/api/export/${currentSessionId}/srt`, '_blank');
   });
+}
+
+function generateMoMDocumentText() {
+  if (!currentAnalysis) return 'No analysis available.';
+  let out = `MINUTES OF MEETING: ${currentAnalysis.meeting_title}\n`;
+  out += `=========================================================\n\n`;
+  out += `OVERALL TONE: ${currentAnalysis.overall_sentiment}\n\n`;
+  out += `1. EXECUTIVE SUMMARY\n---------------------------------------------------------\n`;
+  out += `${currentAnalysis.executive_summary}\n\n`;
+
+  out += `2. KEY TOPICS\n---------------------------------------------------------\n`;
+  (currentAnalysis.key_topics || []).forEach(t => {
+    out += `• ${t.topic}: ${t.summary}\n`;
+    (t.key_points || []).forEach(p => out += `   - ${p}\n`);
+  });
+  out += `\n`;
+
+  out += `3. ACTION ITEMS\n---------------------------------------------------------\n`;
+  (actionItemsList || []).forEach(item => {
+    out += `[${item.status}] #${item.id}: ${item.task} | Assignee: ${item.assignee} | Due: ${item.deadline} | Priority: ${item.priority}\n`;
+  });
+  out += `\n`;
+
+  out += `4. KEY DECISIONS\n---------------------------------------------------------\n`;
+  (currentAnalysis.key_decisions || []).forEach(d => {
+    out += `• Decision ${d.id}: ${d.decision} (${d.rationale || ''})\n`;
+  });
+
+  return out;
 }
 
 // ==========================================
@@ -556,6 +1212,11 @@ function escapeHtml(str) {
   return str.replace(/[&<>'"]/g, tag => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   }[tag] || tag));
+}
+
+function escapeQuote(str) {
+  if (!str) return '';
+  return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 function escapeRegex(string) {

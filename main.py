@@ -69,6 +69,38 @@ def save_session(session_id: str, data: dict):
     except Exception as e:
         print(f"Warning: Failed to persist session metadata: {e}")
 
+def format_gemini_error(e: Exception, action_title: str = "AI Request") -> tuple[int, str]:
+    """Translates raw socket, DNS, auth, and quota exceptions into helpful HTTP status codes and messages."""
+    err_str = str(e)
+    err_lower = err_str.lower()
+
+    if any(k in err_lower for k in ["getaddrinfo failed", "11001", "nameresolutionerror", "connectionerror", "connecttimeout", "network connection error"]):
+        return (
+            503,
+            "Network Connection Error: Unable to resolve or communicate with Google AI servers (DNS lookup failed). "
+            "Please check your internet connection or DNS settings and try again."
+        )
+
+    if any(k in err_lower for k in ["timeout", "remotedisconnected", "connection refused", "connection reset"]):
+        return (
+            504,
+            "Connection Timeout: The request to Google Gemini timed out. Please verify your connection speed and retry."
+        )
+
+    if any(k in err_lower for k in ["403", "api_key_invalid", "api key not valid", "unauthenticated", "permission_denied"]):
+        return (
+            401,
+            "Gemini Authentication Error: Your API key appears invalid or lacks permissions. Please update your key in Settings."
+        )
+
+    if any(k in err_lower for k in ["429", "quota", "resource_exhausted", "too many requests"]):
+        return (
+            429,
+            "Gemini Quota Exceeded: Rate limit reached for this API key. Please wait a moment or switch models in Settings."
+        )
+
+    return (500, f"{action_title} failed: {err_str}")
+
 
 app = FastAPI(
     title="AI-Powered Meeting & Conversation Intelligence System",
@@ -151,9 +183,9 @@ async def test_gemini():
     try:
         client = genai.Client(api_key=key)
         models = [m.name for m in client.models.list()]
-        return {"status": "connected", "models": models}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        status_code, clean_msg = format_gemini_error(e, "Connection test")
+        return {"status": "error", "message": clean_msg, "code": status_code}
 
 
 
@@ -420,7 +452,8 @@ async def analyze_meeting(req: AnalyzeRequest):
         analyzer = IntelligenceAnalyzer(provider=provider)
         analysis = analyzer.analyze(session["transcript"])
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI Analysis failed: {str(e)}")
+        status_code, clean_msg = format_gemini_error(e, "AI Analysis")
+        raise HTTPException(status_code=status_code, detail=clean_msg)
 
     session["analysis"] = analysis
 
@@ -454,7 +487,8 @@ async def ask_meeting(req: ChatQueryRequest):
         response = analyzer.ask(session["transcript"], req.query)
         return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Q&A failed: {str(e)}")
+        status_code, clean_msg = format_gemini_error(e, "Q&A")
+        raise HTTPException(status_code=status_code, detail=clean_msg)
 
 
 @app.get("/api/export/{session_id}/{fmt}")

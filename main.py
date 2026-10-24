@@ -127,7 +127,25 @@ async def update_settings(settings: SettingsUpdate):
     """Updates settings dynamically in memory."""
     if settings.gemini_api_key:
         os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
+    if settings.gemini_model:
+        os.environ["GEMINI_MODEL"] = settings.gemini_model
     return {"status": "success", "message": "Settings updated"}
+
+
+@app.get("/api/test-gemini")
+async def test_gemini():
+    """Diagnostic endpoint to inspect available models for current API key."""
+    from google import genai
+    key = os.getenv("GEMINI_API_KEY", "") or GEMINI_API_KEY
+    if not key:
+        return {"error": "No API key found"}
+    try:
+        client = genai.Client(api_key=key)
+        models = [m.name for m in client.models.list()]
+        return {"status": "connected", "models": models}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 
 
 @app.post("/api/upload")

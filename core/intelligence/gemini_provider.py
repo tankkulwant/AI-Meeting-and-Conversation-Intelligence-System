@@ -39,53 +39,11 @@ class GeminiProvider(LLMProvider):
 
     def _resolve_model_name(self, client: genai.Client) -> str:
         """
-        Dynamically verifies which Gemini model is available for the active API key.
+        Returns the resolved model name, defaulting to gemini-3.8-flash.
         """
         if self._resolved_model:
             return self._resolved_model
-
-        candidates = [
-            self.model_name,
-            "gemini-2.0-flash",
-            "gemini-2.5-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b",
-            "gemini-1.5-pro",
-            "gemini-2.0-flash-exp"
-        ]
-
-        # Query client.models.list() to find active models
-        try:
-            available_models = []
-            for m in client.models.list():
-                raw_name = m.name or ""
-                clean_name = raw_name.replace("models/", "")
-                available_models.append(clean_name)
-
-            # Match against candidates
-            for c in candidates:
-                if c in available_models:
-                    self._resolved_model = c
-                    self.model_name = c
-                    return c
-
-            # Match any gemini flash or pro model
-            for a in available_models:
-                if "gemini" in a and ("flash" in a or "pro" in a):
-                    self._resolved_model = a
-                    self.model_name = a
-                    return a
-
-            if available_models:
-                self._resolved_model = available_models[0]
-                self.model_name = available_models[0]
-                return self._resolved_model
-        except Exception:
-            pass
-
-        # Default to preferred candidate
-        self._resolved_model = candidates[0] or "gemini-2.0-flash"
+        self._resolved_model = self.model_name or "gemini-3.8-flash"
         return self._resolved_model
 
     def _generate_with_retry(self, client: genai.Client, contents: str, config: types.GenerateContentConfig):
@@ -95,12 +53,14 @@ class GeminiProvider(LLMProvider):
         primary_model = self._resolve_model_name(client)
         fallback_chain = [
             primary_model,
-            "gemini-2.0-flash",
+            "gemini-3.8-flash",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest",
             "gemini-2.5-flash",
+            "gemini-2.0-flash",
             "gemini-1.5-flash-latest",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro",
-            "gemini-2.0-flash-exp"
+            "gemini-1.5-flash"
         ]
 
         last_error = None

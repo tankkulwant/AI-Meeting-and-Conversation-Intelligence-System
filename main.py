@@ -103,6 +103,15 @@ async def root():
     return {"message": "AI Meeting Intelligence API is running. Access /docs for API documentation."}
 
 
+@app.get("/favicon.ico")
+async def favicon():
+    """Serves the website favicon."""
+    fav_file = STATIC_DIR / "favicon.ico"
+    if fav_file.exists():
+        return FileResponse(fav_file, media_type="image/x-icon")
+    return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
+
+
 class SettingsUpdate(BaseModel):
     gemini_api_key: Optional[str] = None
     whisper_model: Optional[str] = None

@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MeetingIntelligence.AI — Conversation & Action Intelligence</title>
+  <!-- Favicons (SVG & ICO for all modern and legacy browsers) -->
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="alternate icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="apple-touch-icon" href="/static/img/logo.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -11,28 +16,48 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body class="dark-theme">
-  <!-- Top Navigation Header -->
+  <!-- Top Navigation Header with Transparent Logo -->
   <header class="app-header">
-    <div class="header-brand">
-      <div class="logo-icon">
-        <i class="fa-solid fa-brain-circuit"></i>
+    <div class="header-inner">
+      <div class="header-brand">
+        <a href="/" class="brand-link" title="MeetingIntelligence.AI Home">
+          <div class="brand-logo-wrap">
+            <img src="/static/img/logo.svg" alt="MeetingIntelligence.AI Logo" class="brand-logo-img">
+          </div>
+          <div class="brand-text">
+            <div class="brand-title-row">
+              <span class="brand-title">MeetingIntelligence</span><span class="brand-accent">.AI</span>
+              <span class="brand-version-badge">v2.1</span>
+            </div>
+            <p class="brand-subtitle">AI Conversation Analysis &amp; Action Intelligence</p>
+          </div>
+        </a>
       </div>
-      <div>
-        <h1 class="brand-title">MeetingIntelligence<span class="brand-accent">.AI</span></h1>
-        <p class="brand-subtitle">AI-Powered Conversation Analysis & Action Engine</p>
+
+      <div class="header-actions">
+        <!-- Live AI Engine Status Indicator -->
+        <div id="apiStatusBadge" class="status-badge status-warning" title="Gemini AI Analysis Status">
+          <span class="status-dot"></span>
+          <span id="apiStatusText">Checking Gemini API...</span>
+        </div>
+
+        <div class="header-divider"></div>
+
+        <!-- Header Actions -->
+        <button id="openSettingsBtn" class="nav-btn" title="Configure Gemini API Key and Whisper Model">
+          <i class="fa-solid fa-sliders"></i>
+          <span>Settings</span>
+        </button>
+
+        <a href="/docs" target="_blank" class="nav-btn nav-btn-outline" title="Interactive Swagger REST API Documentation">
+          <i class="fa-solid fa-code"></i>
+          <span>API Docs</span>
+        </a>
+
+        <a href="https://github.com/tankkulwant/AI-Meeting-and-Conversation-Intelligence-System" target="_blank" class="nav-icon-link" title="GitHub Repository">
+          <i class="fa-brands fa-github"></i>
+        </a>
       </div>
-    </div>
-    <div class="header-actions">
-      <div id="apiStatusBadge" class="status-badge status-warning">
-        <span class="status-dot"></span>
-        <span id="apiStatusText">Checking Gemini API...</span>
-      </div>
-      <button id="openSettingsBtn" class="btn btn-secondary">
-        <i class="fa-solid fa-gear"></i> Settings
-      </button>
-      <a href="/docs" target="_blank" class="btn btn-outline" title="Interactive Swagger REST API Documentation">
-        <i class="fa-solid fa-code"></i> API Docs
-      </a>
     </div>
   </header>
 

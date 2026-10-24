@@ -38,42 +38,120 @@
 
   <!-- Main Container -->
   <main class="app-container">
-    <!-- Upload Hero Section -->
+    <!-- Modernized Upload Hero Section -->
     <section id="uploadSection" class="upload-section">
-      <div class="upload-card">
+      <!-- Hero Intro Header -->
+      <div class="hero-header">
+        <div class="hero-badge">
+          <span class="badge-pulse"></span>
+          <span>Faster-Whisper v3 + Gemini 3.8 Flash</span>
+          <span class="badge-divider">•</span>
+          <span class="badge-accent">Enterprise AI</span>
+        </div>
+        <h2 class="hero-headline">
+          Turn Meeting Recordings into <span class="gradient-text">Actionable Intelligence</span>
+        </h2>
+        <p class="hero-subtext">
+          Transcribe, analyze, and act on every conversation. Get word-synced interactive playback, executive minutes, smart action items, and timestamped Q&A in seconds.
+        </p>
+      </div>
+
+      <!-- Upload Studio Box -->
+      <div class="upload-studio-card">
+        <!-- Dropzone Target -->
         <div class="upload-dropzone" id="dropzone">
           <input type="file" id="mediaFileInput" accept="video/*,audio/*" class="file-input-hidden">
-          <div class="dropzone-icon">
-            <i class="fa-solid fa-cloud-arrow-up"></i>
+          
+          <div class="upload-art-hub">
+            <div class="upload-ring-outer"></div>
+            <div class="upload-ring-inner"></div>
+            <div class="upload-icon-center">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+            </div>
           </div>
-          <h2 class="dropzone-title">Upload Meeting Recording</h2>
-          <p class="dropzone-desc">Drag & drop any video (.mp4, .mkv, .mov) or audio (.mp3, .wav, .m4a) file</p>
-          <div class="dropzone-controls">
-            <button id="browseBtn" class="btn btn-primary">
-              <i class="fa-solid fa-folder-open"></i> Browse Files
-            </button>
-            <div class="select-group">
-              <label for="modelSelect">Whisper Model:</label>
-              <select id="modelSelect" class="form-select">
+
+          <h3 class="dropzone-title">Drop your recording here, or browse files</h3>
+          <p class="dropzone-desc">Fast on-device audio normalization and neural speech transcription</p>
+
+          <div class="format-pills-row">
+            <span class="fmt-pill"><i class="fa-solid fa-video"></i> MP4</span>
+            <span class="fmt-pill"><i class="fa-solid fa-film"></i> MOV</span>
+            <span class="fmt-pill"><i class="fa-solid fa-file-video"></i> MKV</span>
+            <span class="fmt-pill"><i class="fa-solid fa-music"></i> MP3</span>
+            <span class="fmt-pill"><i class="fa-solid fa-wave-square"></i> WAV</span>
+            <span class="fmt-pill"><i class="fa-solid fa-file-audio"></i> M4A</span>
+          </div>
+
+          <button id="browseBtn" class="btn btn-primary btn-browse">
+            <i class="fa-solid fa-folder-open"></i> Select Media File
+          </button>
+        </div>
+
+        <!-- Studio Configuration Bar -->
+        <div class="studio-config-bar">
+          <div class="config-controls">
+            <div class="config-item">
+              <span class="config-label"><i class="fa-solid fa-microchip"></i> Whisper Model</span>
+              <select id="modelSelect" class="form-select config-select">
                 <option value="base" selected>Base (Fast & Balanced)</option>
                 <option value="tiny">Tiny (Ultra-Fast)</option>
                 <option value="small">Small (High Accuracy)</option>
               </select>
             </div>
-            <div class="select-group">
-              <label for="langSelect">Language:</label>
-              <select id="langSelect" class="form-select">
+            <div class="config-item">
+              <span class="config-label"><i class="fa-solid fa-globe"></i> Language</span>
+              <select id="langSelect" class="form-select config-select">
                 <option value="auto" selected>Auto-Detect</option>
-                <option value="en">English</option>
+                <option value="en">English (US/UK/Global)</option>
                 <option value="hi">Hindi / Hinglish</option>
               </select>
             </div>
+          </div>
+
+          <div class="privacy-guarantee">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>Local & Private Audio Processing</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Capabilities Grid (Below Upload Card) -->
+      <div class="capabilities-grid">
+        <div class="cap-card">
+          <div class="cap-icon icon-karaoke"><i class="fa-solid fa-headphones-simple"></i></div>
+          <div class="cap-content">
+            <h4>Word-Synced Playback</h4>
+            <p>Sub-second word timestamp alignment with live karaoke auto-scroll seeking.</p>
+          </div>
+        </div>
+
+        <div class="cap-card">
+          <div class="cap-icon icon-mom"><i class="fa-solid fa-file-signature"></i></div>
+          <div class="cap-content">
+            <h4>Executive MoM & Decisions</h4>
+            <p>One-click formal Minutes of Meeting with takeaways and verified decisions.</p>
+          </div>
+        </div>
+
+        <div class="cap-card">
+          <div class="cap-icon icon-tasks"><i class="fa-solid fa-list-check"></i></div>
+          <div class="cap-content">
+            <h4>Smart Action Extractor</h4>
+            <p>AI extracts owners, priority tags, and status checkboxes ready for export.</p>
+          </div>
+        </div>
+
+        <div class="cap-card">
+          <div class="cap-icon icon-chat"><i class="fa-solid fa-comments"></i></div>
+          <div class="cap-content">
+            <h4>Contextual Q&A Chat</h4>
+            <p>Ask anything about the meeting with clickable instant jump-to-timestamp links.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Real-time Percentage Progress Card -->
+    <!-- Real-time Percentage Progress Card with Cancel Action -->
     <div id="progressBanner" class="progress-card hidden">
       <div class="progress-header">
         <div class="progress-title-wrap">
@@ -83,7 +161,12 @@
             <p id="progressDetail" class="progress-subtitle">Uploading file and extracting 16kHz audio stream.</p>
           </div>
         </div>
-        <div class="progress-pct-badge" id="progressPctBadge">0%</div>
+        <div class="progress-actions-wrap">
+          <div class="progress-pct-badge" id="progressPctBadge">0%</div>
+          <button id="cancelProcessBtn" class="btn btn-cancel" title="Cancel in-progress operation">
+            <i class="fa-solid fa-circle-xmark"></i> Cancel
+          </button>
+        </div>
       </div>
 
       <!-- Progress Track -->
@@ -95,11 +178,11 @@
       <div class="progress-steps-row">
         <div class="prog-step active" id="progStepUpload">
           <i class="fa-solid fa-cloud-arrow-up"></i>
-          <span>1. Upload</span>
+          <span>1. Upload & Normalize</span>
         </div>
         <div class="prog-step" id="progStepTranscribe">
           <i class="fa-solid fa-microphone-lines"></i>
-          <span>2. Transcribe</span>
+          <span>2. Speech-to-Text</span>
         </div>
         <div class="prog-step" id="progStepAnalyze">
           <i class="fa-solid fa-brain"></i>
@@ -456,6 +539,27 @@
       </div>
       <div class="modal-footer">
         <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancel Confirmation Modal -->
+  <div id="cancelConfirmModal" class="modal-overlay hidden">
+    <div class="modal-content cancel-modal-box">
+      <div class="cancel-modal-icon-wrap">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <h3 class="cancel-modal-title">Cancel Operation?</h3>
+      <p class="cancel-modal-text">
+        Are you sure you want to cancel the current processing? Any upload progress and transcription work done so far will be safely stopped and cleared.
+      </p>
+      <div class="cancel-modal-actions">
+        <button id="cancelModalKeepBtn" class="btn btn-secondary">
+          Continue Processing
+        </button>
+        <button id="cancelModalConfirmBtn" class="btn btn-danger">
+          <i class="fa-solid fa-xmark"></i> Yes, Cancel
+        </button>
       </div>
     </div>
   </div>

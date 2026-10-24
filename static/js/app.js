@@ -7,6 +7,11 @@ let transcriptSegments = [];
 let actionItemsList = [];
 let currentActionFilter = 'all';
 
+// Active network operations for cancellation
+let activeXhr = null;
+let activeEventSource = null;
+let isProcessingCancelled = false;
+
 // DOM Elements
 const dropzone = document.getElementById('dropzone');
 const mediaFileInput = document.getElementById('mediaFileInput');
@@ -23,6 +28,10 @@ const progStepTranscribe = document.getElementById('progStepTranscribe');
 const progStepAnalyze = document.getElementById('progStepAnalyze');
 const progressLiveTicker = document.getElementById('progressLiveTicker');
 const tickerText = document.getElementById('tickerText');
+const cancelProcessBtn = document.getElementById('cancelProcessBtn');
+const cancelConfirmModal = document.getElementById('cancelConfirmModal');
+const cancelModalKeepBtn = document.getElementById('cancelModalKeepBtn');
+const cancelModalConfirmBtn = document.getElementById('cancelModalConfirmBtn');
 const uploadSection = document.getElementById('uploadSection');
 const workspaceSection = document.getElementById('workspaceSection');
 
@@ -88,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initExportEvents();
   initSettingsModal();
   initPreviewModal();
+  initCancelEvents();
 });
 
 async function checkApiStatus() {
@@ -136,6 +146,54 @@ function initPreviewModal() {
   downloadFromPreviewBtn.addEventListener('click', () => {
     if (currentSessionId) window.open(`/api/export/${currentSessionId}/pdf`, '_blank');
   });
+}
+
+function initCancelEvents() {
+  if (cancelProcessBtn) {
+    cancelProcessBtn.addEventListener('click', () => {
+      if (cancelConfirmModal) cancelConfirmModal.classList.remove('hidden');
+    });
+  }
+
+  if (cancelModalKeepBtn) {
+    cancelModalKeepBtn.addEventListener('click', () => {
+      if (cancelConfirmModal) cancelConfirmModal.classList.add('hidden');
+    });
+  }
+
+  if (cancelModalConfirmBtn) {
+    cancelModalConfirmBtn.addEventListener('click', () => {
+      isProcessingCancelled = true;
+
+      // Abort active upload XHR if running
+      if (activeXhr) {
+        try { activeXhr.abort(); } catch (e) {}
+        activeXhr = null;
+      }
+
+      // Close active SSE transcription stream if running
+      if (activeEventSource) {
+        try { activeEventSource.close(); } catch (e) {}
+        activeEventSource = null;
+      }
+
+      // Reset file input
+      if (mediaFileInput) mediaFileInput.value = '';
+
+      // Reset UI back to clean upload studio
+      if (cancelConfirmModal) cancelConfirmModal.classList.add('hidden');
+      if (progressBanner) progressBanner.classList.add('hidden');
+      if (uploadSection) uploadSection.classList.remove('hidden');
+
+      setProgress({
+        percent: 0,
+        title: 'Operation Cancelled',
+        detail: 'The file upload / transcription was safely aborted.',
+        step: 'upload',
+        ticker: ''
+      });
+    });
+  }
 }
 
 // ==========================================
@@ -234,10 +292,12 @@ function setProgress({ percent, title, detail, step, ticker }) {
 function uploadMediaWithProgress(file) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    activeXhr = xhr;
     const formData = new FormData();
     formData.append('file', file);
 
     xhr.upload.addEventListener('progress', (e) => {
+      if (isProcessingCancelled) return;
       if (e.lengthComputable) {
         const pct = Math.round((e.loaded / e.total) * 100);
         const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
@@ -253,6 +313,8 @@ function uploadMediaWithProgress(file) {
     });
 
     xhr.addEventListener('load', () => {
+      activeXhr = null;
+      if (isProcessingCancelled) return;
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const res = JSON.parse(xhr.responseText);
@@ -265,8 +327,17 @@ function uploadMediaWithProgress(file) {
       }
     });
 
-    xhr.addEventListener('error', () => reject(new Error('Network connection error during upload.')));
-    xhr.addEventListener('abort', () => reject(new Error('Upload operation was aborted.')));
+    xhr.addEventListener('error', () => {
+      activeXhr = null;
+      if (!isProcessingCancelled) {
+        reject(new Error('Network connection error during upload.'));
+      }
+    });
+
+    xhr.addEventListener('abort', () => {
+      activeXhr = null;
+      // Intentionally aborted by user
+    });
 
     xhr.open('POST', '/api/upload');
     xhr.send(formData);
@@ -275,6 +346,7 @@ function uploadMediaWithProgress(file) {
 
 function transcribeAudioWithProgress(sessionId, modelSize, language) {
   return new Promise((resolve, reject) => {
+    if (isProcessingCancelled) return;
     setProgress({
       percent: 0,
       title: '2/3 Whisper Transcribing (0%)',
@@ -289,8 +361,14 @@ function transcribeAudioWithProgress(sessionId, modelSize, language) {
 
     const sseUrl = `/api/transcribe-stream/${sessionId}?${params.toString()}`;
     const eventSource = new EventSource(sseUrl);
+    activeEventSource = eventSource;
 
     eventSource.onmessage = (event) => {
+      if (isProcessingCancelled) {
+        eventSource.close();
+        activeEventSource = null;
+        return;
+      }
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'progress') {
@@ -306,6 +384,7 @@ function transcribeAudioWithProgress(sessionId, modelSize, language) {
           });
         } else if (data.type === 'complete') {
           eventSource.close();
+          activeEventSource = null;
           setProgress({
             percent: 100,
             title: '2/3 Transcription Complete (100%)',
@@ -316,7 +395,10 @@ function transcribeAudioWithProgress(sessionId, modelSize, language) {
           resolve(data.transcript);
         } else if (data.type === 'error') {
           eventSource.close();
-          reject(new Error(data.message || 'Transcription error occurred.'));
+          activeEventSource = null;
+          if (!isProcessingCancelled) {
+            reject(new Error(data.message || 'Transcription error occurred.'));
+          }
         }
       } catch (err) {
         console.error('SSE parse error:', err);
@@ -325,12 +407,16 @@ function transcribeAudioWithProgress(sessionId, modelSize, language) {
 
     eventSource.onerror = (err) => {
       eventSource.close();
-      reject(new Error('Transcription stream connection interrupted.'));
+      activeEventSource = null;
+      if (!isProcessingCancelled) {
+        reject(new Error('Transcription stream connection interrupted.'));
+      }
     };
   });
 }
 
 async function processSelectedFile(file) {
+  isProcessingCancelled = false;
   try {
     uploadSection.classList.add('hidden');
     progressBanner.classList.remove('hidden');
@@ -345,6 +431,7 @@ async function processSelectedFile(file) {
     });
 
     const uploadData = await uploadMediaWithProgress(file);
+    if (isProcessingCancelled || !uploadData) return;
     currentSessionId = uploadData.session_id;
 
     // Setup Media Player
@@ -357,6 +444,7 @@ async function processSelectedFile(file) {
       modelSelect.value,
       langSelect.value
     );
+    if (isProcessingCancelled || !currentTranscript) return;
     transcriptSegments = currentTranscript.segments || [];
 
     // Calculate Metrics & Render Transcript
@@ -372,6 +460,7 @@ async function processSelectedFile(file) {
     runAIAnalysis(currentSessionId);
 
   } catch (err) {
+    if (isProcessingCancelled) return;
     console.error(err);
     alert('Processing Error: ' + err.message);
     progressBanner.classList.add('hidden');

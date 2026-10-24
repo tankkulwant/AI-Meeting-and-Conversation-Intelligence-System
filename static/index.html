@@ -149,6 +149,23 @@
           </div>
         </div>
       </div>
+
+      <!-- Saved Meeting History Section -->
+      <div id="recentMeetingsSection" class="recent-meetings-section hidden">
+        <div class="recent-header">
+          <div class="recent-title-wrap">
+            <i class="fa-solid fa-clock-rotate-left recent-title-icon"></i>
+            <h3>Saved Meeting Recordings</h3>
+            <span id="recentCountBadge" class="recent-count-badge">0 saved</span>
+          </div>
+          <button id="refreshRecentBtn" class="btn btn-sm btn-outline" title="Refresh saved recordings">
+            <i class="fa-solid fa-arrow-rotate-right"></i> Refresh
+          </button>
+        </div>
+        <div id="recentMeetingsGrid" class="recent-meetings-grid">
+          <!-- Dynamically populated session cards -->
+        </div>
+      </div>
     </section>
 
     <!-- Real-time Percentage Progress Card with Cancel Action -->
@@ -214,10 +231,13 @@
         </div>
         <div class="strip-actions">
           <button id="reanalyzeBtn" class="btn btn-sm btn-outline">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Analyze with AI
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Re-Analyze
           </button>
           <button id="newMeetingBtn" class="btn btn-sm btn-secondary">
             <i class="fa-solid fa-plus"></i> New Meeting
+          </button>
+          <button id="deleteSessionBtn" class="btn btn-sm btn-danger-soft" title="Permanently delete this meeting recording and free disk space">
+            <i class="fa-solid fa-trash-can"></i> Delete Data
           </button>
         </div>
       </div>
@@ -559,6 +579,29 @@
         </button>
         <button id="cancelModalConfirmBtn" class="btn btn-danger">
           <i class="fa-solid fa-xmark"></i> Yes, Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permanent Delete Confirmation Modal -->
+  <div id="deleteConfirmModal" class="modal-overlay hidden">
+    <div class="modal-content delete-modal-box">
+      <div class="delete-modal-icon-wrap">
+        <i class="fa-solid fa-trash-can"></i>
+      </div>
+      <h3 class="delete-modal-title">Delete Meeting Data?</h3>
+      <p class="delete-modal-text">
+        This will <strong>permanently delete</strong> the raw video/audio file, extracted mono audio, transcript database, and all generated reports from your disk. This action cannot be undone.
+      </p>
+      <div class="delete-modal-meta-box">
+        <div class="del-row"><span>Meeting:</span> <strong id="delModalFileName">meeting.mp4</strong></div>
+        <div class="del-row"><span>Session ID:</span> <code id="delModalSessionId">--------</code></div>
+      </div>
+      <div class="delete-modal-actions">
+        <button id="deleteModalKeepBtn" class="btn btn-secondary">Keep Meeting</button>
+        <button id="deleteModalConfirmBtn" class="btn btn-danger">
+          <i class="fa-solid fa-trash-can"></i> Permanently Delete
         </button>
       </div>
     </div>

@@ -32,6 +32,21 @@ const cancelProcessBtn = document.getElementById('cancelProcessBtn');
 const cancelConfirmModal = document.getElementById('cancelConfirmModal');
 const cancelModalKeepBtn = document.getElementById('cancelModalKeepBtn');
 const cancelModalConfirmBtn = document.getElementById('cancelModalConfirmBtn');
+
+// Delete & Persistence Selectors
+const deleteSessionBtn = document.getElementById('deleteSessionBtn');
+const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+const delModalFileName = document.getElementById('delModalFileName');
+const delModalSessionId = document.getElementById('delModalSessionId');
+const deleteModalKeepBtn = document.getElementById('deleteModalKeepBtn');
+const deleteModalConfirmBtn = document.getElementById('deleteModalConfirmBtn');
+
+const recentMeetingsSection = document.getElementById('recentMeetingsSection');
+const recentMeetingsGrid = document.getElementById('recentMeetingsGrid');
+const recentCountBadge = document.getElementById('recentCountBadge');
+const refreshRecentBtn = document.getElementById('refreshRecentBtn');
+let sessionToDelete = null;
+
 const uploadSection = document.getElementById('uploadSection');
 const workspaceSection = document.getElementById('workspaceSection');
 
@@ -98,6 +113,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initSettingsModal();
   initPreviewModal();
   initCancelEvents();
+  initDeleteEvents();
+  initAutoRestoreAndHistory();
 });
 
 async function checkApiStatus() {
@@ -196,6 +213,193 @@ function initCancelEvents() {
   }
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function openDeleteModal(sessionId, filename) {
+  sessionToDelete = sessionId;
+  if (delModalFileName) delModalFileName.textContent = filename || 'Meeting';
+  if (delModalSessionId) delModalSessionId.textContent = sessionId;
+  if (deleteConfirmModal) deleteConfirmModal.classList.remove('hidden');
+}
+
+function initDeleteEvents() {
+  if (deleteSessionBtn) {
+    deleteSessionBtn.addEventListener('click', () => {
+      if (currentSessionId) {
+        openDeleteModal(currentSessionId, stripFileName.textContent);
+      }
+    });
+  }
+
+  if (deleteModalKeepBtn) {
+    deleteModalKeepBtn.addEventListener('click', () => {
+      if (deleteConfirmModal) deleteConfirmModal.classList.add('hidden');
+      sessionToDelete = null;
+    });
+  }
+
+  if (deleteModalConfirmBtn) {
+    deleteModalConfirmBtn.addEventListener('click', async () => {
+      if (!sessionToDelete) return;
+      const targetId = sessionToDelete;
+      try {
+        const res = await fetch(`/api/session/${targetId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text());
+
+        deleteConfirmModal.classList.add('hidden');
+
+        // If currently viewing this session, reset back to clean upload studio
+        if (targetId === currentSessionId) {
+          localStorage.removeItem('active_meeting_session');
+          window.history.pushState(null, '', window.location.pathname);
+          workspaceSection.classList.add('hidden');
+          uploadSection.classList.remove('hidden');
+          if (activePlayer) activePlayer.pause();
+          currentSessionId = null;
+          currentTranscript = null;
+          currentAnalysis = null;
+        }
+
+        sessionToDelete = null;
+        loadRecentSessions();
+        alert('Meeting data and disk files permanently deleted.');
+      } catch (err) {
+        alert('Failed to delete meeting: ' + err.message);
+      }
+    });
+  }
+
+  if (refreshRecentBtn) {
+    refreshRecentBtn.addEventListener('click', () => {
+      loadRecentSessions();
+    });
+  }
+}
+
+async function restoreSession(sessionId) {
+  try {
+    const res = await fetch(`/api/session/${sessionId}`);
+    if (!res.ok) {
+      localStorage.removeItem('active_meeting_session');
+      window.history.pushState(null, '', window.location.pathname);
+      loadRecentSessions();
+      return;
+    }
+
+    const data = await res.json();
+    currentSessionId = data.session_id;
+    localStorage.setItem('active_meeting_session', currentSessionId);
+    window.history.pushState(null, '', `?session=${currentSessionId}`);
+
+    // Setup media player
+    setupPlayer(data.media_url, data.is_video);
+    stripFileName.textContent = data.filename;
+
+    // Restore Transcript
+    if (data.transcript) {
+      currentTranscript = data.transcript;
+      transcriptSegments = currentTranscript.segments || [];
+      updateKPIMetrics(currentTranscript);
+      renderTranscript(transcriptSegments);
+      stripLanguage.textContent = (currentTranscript.language || 'en').toUpperCase();
+    }
+
+    // Restore Analysis
+    if (data.analysis) {
+      currentAnalysis = data.analysis;
+      renderAnalysis(currentAnalysis);
+    } else if (currentSessionId) {
+      runAIAnalysis(currentSessionId);
+    }
+
+    // Switch views to workspace
+    uploadSection.classList.add('hidden');
+    progressBanner.classList.add('hidden');
+    workspaceSection.classList.remove('hidden');
+
+  } catch (err) {
+    console.error('Failed to restore session:', err);
+    loadRecentSessions();
+  }
+}
+
+async function loadRecentSessions() {
+  try {
+    const res = await fetch('/api/sessions');
+    if (!res.ok) return;
+    const sessions = await res.json();
+
+    if (!sessions || sessions.length === 0) {
+      if (recentMeetingsSection) recentMeetingsSection.classList.add('hidden');
+      return;
+    }
+
+    if (recentMeetingsSection) recentMeetingsSection.classList.remove('hidden');
+    if (recentCountBadge) recentCountBadge.textContent = `${sessions.length} saved`;
+    if (!recentMeetingsGrid) return;
+    recentMeetingsGrid.innerHTML = '';
+
+    sessions.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'recent-card';
+
+      const dateStr = s.created_at ? new Date(s.created_at * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent';
+      const durationStr = formatTime(s.duration || 0);
+
+      card.innerHTML = `
+        <div class="recent-card-top">
+          <h4 class="recent-card-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</h4>
+        </div>
+        <div class="recent-card-filename" title="${escapeHtml(s.filename)}"><i class="fa-solid fa-file-video"></i> ${escapeHtml(s.filename)}</div>
+        <div class="recent-card-meta">
+          <span><i class="fa-solid fa-clock"></i> ${durationStr}</span>
+          <span><i class="fa-solid fa-hard-drive"></i> ${s.size_mb} MB</span>
+          <span><i class="fa-solid fa-calendar"></i> ${dateStr}</span>
+        </div>
+        <div class="recent-card-actions">
+          <button class="btn btn-sm btn-primary recent-btn-open" data-session-id="${s.session_id}">
+            <i class="fa-solid fa-folder-open"></i> Open Meeting
+          </button>
+          <button class="btn btn-sm btn-danger-soft recent-btn-delete" data-session-id="${s.session_id}" data-filename="${escapeHtml(s.filename)}" title="Permanently delete from disk">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
+      `;
+
+      card.querySelector('.recent-btn-open').addEventListener('click', () => {
+        restoreSession(s.session_id);
+      });
+
+      card.querySelector('.recent-btn-delete').addEventListener('click', () => {
+        openDeleteModal(s.session_id, s.filename);
+      });
+
+      recentMeetingsGrid.appendChild(card);
+    });
+
+  } catch (err) {
+    console.error('Failed to load recent sessions:', err);
+  }
+}
+
+function initAutoRestoreAndHistory() {
+  const params = new URLSearchParams(window.location.search);
+  const activeId = params.get('session') || localStorage.getItem('active_meeting_session');
+  if (activeId) {
+    restoreSession(activeId);
+  } else {
+    loadRecentSessions();
+  }
+}
+
 // ==========================================
 // Tabs Navigation
 // ==========================================
@@ -213,8 +417,16 @@ function initTabNavigation() {
   });
 
   document.getElementById('newMeetingBtn')?.addEventListener('click', () => {
-    if (confirm('Start a new meeting session?')) {
-      location.reload();
+    if (confirm('Start a new meeting session? Your current meeting will remain saved in history.')) {
+      localStorage.removeItem('active_meeting_session');
+      window.history.pushState(null, '', window.location.pathname);
+      if (activePlayer) activePlayer.pause();
+      currentSessionId = null;
+      currentTranscript = null;
+      currentAnalysis = null;
+      workspaceSection.classList.add('hidden');
+      uploadSection.classList.remove('hidden');
+      loadRecentSessions();
     }
   });
 
@@ -433,6 +645,8 @@ async function processSelectedFile(file) {
     const uploadData = await uploadMediaWithProgress(file);
     if (isProcessingCancelled || !uploadData) return;
     currentSessionId = uploadData.session_id;
+    localStorage.setItem('active_meeting_session', currentSessionId);
+    window.history.pushState(null, '', `?session=${currentSessionId}`);
 
     // Setup Media Player
     setupPlayer(uploadData.media_url, uploadData.is_video);

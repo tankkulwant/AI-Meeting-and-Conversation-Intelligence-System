@@ -148,6 +148,115 @@ async def test_gemini():
 
 
 
+@app.get("/api/sessions")
+async def list_recent_sessions():
+    """Returns a list of all saved meeting sessions on disk sorted by newest first."""
+    sessions_list = []
+    if not TEMP_DIR.exists():
+        return []
+
+    for meta_file in TEMP_DIR.glob("*_meta.json"):
+        session_id = meta_file.name.replace("_meta.json", "")
+        try:
+            with open(meta_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Compute disk size
+            total_bytes = meta_file.stat().st_size
+            media_path = TEMP_DIR / data.get("media_file", "")
+            if media_path.exists():
+                total_bytes += media_path.stat().st_size
+            audio_path = Path(data.get("audio_path", ""))
+            if audio_path.exists():
+                total_bytes += audio_path.stat().st_size
+
+            size_mb = round(total_bytes / (1024 * 1024), 1)
+
+            # Extract title & duration
+            transcript_data = data.get("transcript") or {}
+            analysis_data = data.get("analysis") or {}
+            title = analysis_data.get("meeting_title") or data.get("original_filename") or f"Meeting {session_id}"
+            duration = transcript_data.get("duration", 0)
+            language = transcript_data.get("language", "en")
+            created_at = meta_file.stat().st_mtime
+
+            sessions_list.append({
+                "session_id": session_id,
+                "title": title,
+                "filename": data.get("original_filename", "recording"),
+                "duration": duration,
+                "language": language,
+                "size_mb": size_mb,
+                "created_at": created_at,
+                "has_analysis": bool(analysis_data.get("executive_summary")),
+            })
+        except Exception as e:
+            print(f"Error reading session {meta_file}: {e}")
+
+    sessions_list.sort(key=lambda s: s["created_at"], reverse=True)
+    return sessions_list
+
+
+@app.get("/api/session/{session_id}")
+async def get_session_detail(session_id: str):
+    """Retrieves full session data from disk for auto-restoring after refresh."""
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Meeting session not found")
+
+    serializable = {}
+    for k, v in session.items():
+        if hasattr(v, "model_dump"):
+            serializable[k] = v.model_dump()
+        elif hasattr(v, "dict"):
+            serializable[k] = v.dict()
+        else:
+            serializable[k] = v
+
+    media_file = session.get("media_file", "")
+    return {
+        "session_id": session_id,
+        "media_url": f"/media/{media_file}",
+        "is_video": session.get("is_video", True),
+        "filename": session.get("original_filename", "meeting"),
+        "transcript": serializable.get("transcript"),
+        "analysis": serializable.get("analysis"),
+    }
+
+
+@app.delete("/api/session/{session_id}")
+async def delete_session(session_id: str):
+    """Permanently deletes a meeting session and its raw media, extracted audio, transcript, and exports from disk."""
+    deleted_files = []
+
+    # Files in temp/
+    for pattern in [f"{session_id}_original.*", f"{session_id}_extracted.wav", f"{session_id}_meta.json"]:
+        for f in TEMP_DIR.glob(pattern):
+            try:
+                f.unlink(missing_ok=True)
+                deleted_files.append(str(f.name))
+            except Exception as e:
+                print(f"Error removing {f}: {e}")
+
+    # Files in output/
+    for pattern in [f"{session_id}.*", f"{session_id}_MoM.*"]:
+        for f in OUTPUT_DIR.glob(pattern):
+            try:
+                f.unlink(missing_ok=True)
+                deleted_files.append(str(f.name))
+            except Exception as e:
+                print(f"Error removing {f}: {e}")
+
+    # Remove from memory cache
+    sessions.pop(session_id, None)
+
+    return {
+        "status": "success",
+        "message": f"Session {session_id} deleted permanently",
+        "deleted_files": deleted_files
+    }
+
+
 @app.post("/api/upload")
 async def upload_media(file: UploadFile = File(...)):
     """

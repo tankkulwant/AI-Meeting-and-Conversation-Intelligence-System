@@ -134,8 +134,72 @@ async function checkApiStatus() {
 }
 
 function initSettingsModal() {
-  openSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+  const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
+  const closeSettingsSecondaryBtn = document.getElementById('closeSettingsSecondaryBtn');
+  const testApiKeyBtn = document.getElementById('testApiKeyBtn');
+  const settingsTestResult = document.getElementById('settingsTestResult');
+  const settingsTestText = document.getElementById('settingsTestText');
+
+  openSettingsBtn.addEventListener('click', () => {
+    settingsModal.classList.remove('hidden');
+    if (settingsTestResult) settingsTestResult.classList.add('hidden');
+  });
+
   closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+  closeSettingsSecondaryBtn?.addEventListener('click', () => settingsModal.classList.add('hidden'));
+
+  // Toggle API key visibility
+  toggleApiKeyVisibility?.addEventListener('click', () => {
+    const isPassword = geminiApiKeyInput.type === 'password';
+    geminiApiKeyInput.type = isPassword ? 'text' : 'password';
+    toggleApiKeyVisibility.innerHTML = isPassword ? '<i class="fa-regular fa-eye-slash"></i>' : '<i class="fa-regular fa-eye"></i>';
+  });
+
+  // Test connection button
+  testApiKeyBtn?.addEventListener('click', async () => {
+    const tempKey = geminiApiKeyInput.value.trim();
+    if (!tempKey) {
+      if (settingsTestResult) {
+        settingsTestResult.className = 'settings-test-box settings-test-error';
+        settingsTestResult.classList.remove('hidden');
+        settingsTestText.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Please enter an API key first.';
+      }
+      return;
+    }
+
+    if (settingsTestResult) {
+      settingsTestResult.className = 'settings-test-box settings-test-loading';
+      settingsTestResult.classList.remove('hidden');
+      settingsTestText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Validating API key with Google AI...';
+    }
+
+    // Update settings in memory so diagnostic endpoint can check it
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gemini_api_key: tempKey, gemini_model: geminiModelInput.value })
+    });
+
+    try {
+      const res = await fetch('/api/test-gemini');
+      const data = await res.json();
+      if (data.status === 'connected') {
+        settingsTestResult.className = 'settings-test-box settings-test-success';
+        const modelCount = data.models ? data.models.length : 0;
+        settingsTestText.innerHTML = `<i class="fa-solid fa-circle-check"></i> <b>Connected successfully!</b> Ready with ${modelCount} models available.`;
+        checkApiStatus();
+      } else {
+        settingsTestResult.className = 'settings-test-box settings-test-error';
+        settingsTestText.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> ${data.message || 'Validation failed'}`;
+      }
+    } catch (err) {
+      if (settingsTestResult) {
+        settingsTestResult.className = 'settings-test-box settings-test-error';
+        settingsTestText.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> Connection error: ${err.message}`;
+      }
+    }
+  });
+
   saveSettingsBtn.addEventListener('click', async () => {
     const key = geminiApiKeyInput.value.trim();
     const model = geminiModelInput.value;
@@ -147,7 +211,7 @@ function initSettingsModal() {
       });
       settingsModal.classList.add('hidden');
       checkApiStatus();
-      alert('Settings updated successfully!');
+      alert('System settings updated successfully!');
     } else {
       settingsModal.classList.add('hidden');
     }

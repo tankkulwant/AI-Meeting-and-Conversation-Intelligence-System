@@ -766,8 +766,90 @@ function updateKPIMetrics(transcript) {
   kpiPace.textContent = `Words (~${wpm} WPM)`;
 }
 
+// ==========================================
+// KPI Dynamic Progress State & Counter Animation
+// ==========================================
+function setKpisToAnalyzingState() {
+  const actionsCard = document.querySelector('.kpi-actions');
+  const decisionsCard = document.querySelector('.kpi-decisions');
+  const sentimentCard = document.querySelector('.kpi-sentiment');
+
+  actionsCard?.classList.add('is-analyzing');
+  decisionsCard?.classList.add('is-analyzing');
+  sentimentCard?.classList.add('is-analyzing');
+
+  kpiActionCount.innerHTML = `
+    <div class="kpi-mini-progress">
+      <div class="kpi-mini-track"><div class="kpi-mini-fill kpi-fill-actions"></div></div>
+      <span class="kpi-mini-status"><i class="fa-solid fa-spinner fa-spin"></i> Extracting...</span>
+    </div>
+  `;
+
+  kpiDecisionCount.innerHTML = `
+    <div class="kpi-mini-progress">
+      <div class="kpi-mini-track"><div class="kpi-mini-fill kpi-fill-decisions"></div></div>
+      <span class="kpi-mini-status"><i class="fa-solid fa-spinner fa-spin"></i> Detecting...</span>
+    </div>
+  `;
+
+  kpiSentimentText.innerHTML = `
+    <div class="kpi-mini-progress">
+      <div class="kpi-mini-track"><div class="kpi-mini-fill kpi-fill-sentiment"></div></div>
+      <span class="kpi-mini-status"><i class="fa-solid fa-spinner fa-spin"></i> Analyzing...</span>
+    </div>
+  `;
+
+  // Show live banner in Summary tab
+  const banner = document.getElementById('aiAnalysisBanner');
+  if (banner) banner.classList.remove('hidden');
+
+  // Placeholders in tables
+  actionItemsTableBody.innerHTML = `
+    <tr>
+      <td colspan="6" class="table-analyzing-row">
+        <i class="fa-solid fa-brain fa-spin"></i> Gemini AI is synthesizing action items, assignees, and deadlines...
+      </td>
+    </tr>
+  `;
+
+  decisionsContainer.innerHTML = `
+    <div style="padding: 24px; text-align: center; color: #94a3b8; font-size: 13.5px;">
+      <i class="fa-solid fa-spinner fa-spin" style="color: #10b981; margin-right: 8px;"></i>
+      Cataloging key decisions & rationale from discussion...
+    </div>
+  `;
+}
+
+function resetKpiAnalyzingState() {
+  document.querySelectorAll('.kpi-card.is-analyzing').forEach(card => card.classList.remove('is-analyzing'));
+  const banner = document.getElementById('aiAnalysisBanner');
+  if (banner) banner.classList.add('hidden');
+}
+
+function animateCounter(element, targetValue, duration = 800) {
+  const target = parseInt(targetValue, 10) || 0;
+  if (target === 0) {
+    element.textContent = '0';
+    return;
+  }
+  const startTime = performance.now();
+  function step(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const easeOut = 1 - Math.pow(1 - progress, 3);
+    element.textContent = Math.round(target * easeOut);
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      element.textContent = target;
+    }
+  }
+  requestAnimationFrame(step);
+}
+
 async function runAIAnalysis(sessionId) {
   try {
+    setKpisToAnalyzingState();
     aiMeetingTitle.textContent = 'Analyzing with Gemini AI...';
     aiExecutiveSummary.textContent = 'Extracting summary, key topics, action items, and decisions...';
 
@@ -779,8 +861,12 @@ async function runAIAnalysis(sessionId) {
 
     if (!res.ok) {
       const err = await res.json();
+      resetKpiAnalyzingState();
       aiMeetingTitle.textContent = 'Analysis Needs API Key';
       aiExecutiveSummary.innerHTML = `<span style="color:#f43f5e">AI Analysis skipped: ${err.detail || 'Missing Gemini API Key'}</span>. Click <b>Settings</b> at the top right to configure your API key.`;
+      kpiActionCount.innerHTML = `<span style="font-size:12px; color:#f43f5e; cursor:pointer;" onclick="openSettingsBtn.click()"><i class="fa-solid fa-gear"></i> Set Key</span>`;
+      kpiDecisionCount.innerHTML = `<span style="font-size:12px; color:#f43f5e; cursor:pointer;" onclick="openSettingsBtn.click()"><i class="fa-solid fa-gear"></i> Set Key</span>`;
+      kpiSentimentText.innerHTML = `<span style="font-size:12px; color:#9ca3af;">—</span>`;
       return;
     }
 
@@ -788,9 +874,13 @@ async function runAIAnalysis(sessionId) {
     renderAnalysis(currentAnalysis);
 
   } catch (err) {
+    resetKpiAnalyzingState();
     console.error('AI Analysis failed:', err);
     aiMeetingTitle.textContent = 'Meeting Intelligence';
     aiExecutiveSummary.textContent = 'Analysis could not be generated. Check your Gemini API connection.';
+    kpiActionCount.textContent = '0';
+    kpiDecisionCount.textContent = '0';
+    kpiSentimentText.textContent = 'Neutral';
   }
 }
 
@@ -880,15 +970,26 @@ window.copyLine = function(sec, text) {
 };
 
 function renderAnalysis(analysis) {
+  // Clear loading/analyzing pulse states
+  resetKpiAnalyzingState();
+
   // Title & Summary
   aiMeetingTitle.textContent = analysis.meeting_title || 'Meeting Summary';
   aiExecutiveSummary.textContent = analysis.executive_summary || 'No summary available.';
 
-  // Sentiment
-  const sentiment = analysis.overall_sentiment || 'Neutral';
+  // Sentiment with modern badge and icon
+  const sentiment = (analysis.overall_sentiment || 'Neutral').trim();
   stripSentiment.textContent = `${sentiment} Tone`;
   stripSentiment.className = `sentiment-pill sentiment-${sentiment.toLowerCase()}`;
-  kpiSentimentText.textContent = sentiment;
+
+  let sClass = 'neutral';
+  let sIcon = 'fa-scale-balanced';
+  const sLower = sentiment.toLowerCase();
+  if (sLower.includes('positive')) { sClass = 'positive'; sIcon = 'fa-face-smile'; }
+  else if (sLower.includes('constructive')) { sClass = 'constructive'; sIcon = 'fa-thumbs-up'; }
+  else if (sLower.includes('critical') || sLower.includes('negative')) { sClass = 'critical'; sIcon = 'fa-triangle-exclamation'; }
+
+  kpiSentimentText.innerHTML = `<span class="badge-sentiment ${sClass}"><i class="fa-solid ${sIcon}"></i> ${escapeHtml(sentiment)}</span>`;
 
   // Key Topics
   topicsContainer.innerHTML = '';
@@ -918,16 +1019,16 @@ function renderAnalysis(analysis) {
     });
   }
 
-  // Action Items
+  // Action Items with count-up animation
   actionItemsList = analysis.action_items || [];
-  kpiActionCount.textContent = actionItemsList.length;
+  animateCounter(kpiActionCount, actionItemsList.length);
   actionItemCountBadge.textContent = `${actionItemsList.length} Tasks`;
   renderActionItemsTable();
 
-  // Key Decisions
+  // Key Decisions with count-up animation
   decisionsContainer.innerHTML = '';
   const decisions = analysis.key_decisions || [];
-  kpiDecisionCount.textContent = decisions.length;
+  animateCounter(kpiDecisionCount, decisions.length);
   if (decisions.length > 0) {
     decisions.forEach(d => {
       const card = document.createElement('div');
@@ -1115,12 +1216,14 @@ function initPlayerEvents() {
 // Interactive Q&A ("Ask the Meeting")
 // ==========================================
 function initChatEvents() {
-  const sendQuestion = async () => {
-    const q = chatInput.value.trim();
+  const sendQuestion = async (overrideQuestion = null) => {
+    const q = (overrideQuestion || chatInput.value).trim();
     if (!q || !currentSessionId) return;
 
-    appendChatMessage('user', q);
-    chatInput.value = '';
+    if (!overrideQuestion) {
+      appendChatMessage('user', q);
+      chatInput.value = '';
+    }
 
     // Show wave typing indicator
     const assistantMsg = appendChatMessage('assistant', '<div class="typing-dots"><span></span><span></span><span></span></div>', true);
@@ -1134,7 +1237,33 @@ function initChatEvents() {
 
       if (!res.ok) {
         const err = await res.json();
-        assistantMsg.querySelector('.msg-body').innerHTML = `<span style="color:#f43f5e">Error: ${err.detail || 'Q&A failed'}</span>`;
+        const errorDetail = err.detail || 'Q&A request could not be processed.';
+        const isNetwork = errorDetail.toLowerCase().includes('network') || errorDetail.toLowerCase().includes('dns') || errorDetail.toLowerCase().includes('connection');
+
+        assistantMsg.querySelector('.msg-body').innerHTML = `
+          <div class="chat-error-card">
+            <div class="chat-error-header">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <span>${isNetwork ? 'Network Connectivity Issue' : 'AI Service Error'}</span>
+            </div>
+            <p class="chat-error-msg">${escapeHtml(errorDetail)}</p>
+            <div class="chat-error-actions">
+              <button type="button" class="btn-retry-qa">
+                <i class="fa-solid fa-rotate-right"></i> Retry Question
+              </button>
+              <button type="button" class="btn-settings-qa">
+                <i class="fa-solid fa-sliders"></i> Check Settings
+              </button>
+            </div>
+          </div>
+        `;
+
+        assistantMsg.querySelector('.btn-retry-qa')?.addEventListener('click', () => {
+          sendQuestion(q);
+        });
+        assistantMsg.querySelector('.btn-settings-qa')?.addEventListener('click', () => {
+          settingsModal.classList.remove('hidden');
+        });
         return;
       }
 
@@ -1150,11 +1279,34 @@ function initChatEvents() {
       assistantMsg.querySelector('.msg-body').innerHTML = formattedAnswer;
 
     } catch (err) {
-      assistantMsg.querySelector('.msg-body').textContent = 'Failed to get answer. Check your connection or API key.';
+      assistantMsg.querySelector('.msg-body').innerHTML = `
+        <div class="chat-error-card">
+          <div class="chat-error-header">
+            <i class="fa-solid fa-circle-xmark"></i>
+            <span>Network Disconnected</span>
+          </div>
+          <p class="chat-error-msg">Failed to connect with the local server or Gemini AI servers. Please check your internet connection.</p>
+          <div class="chat-error-actions">
+            <button type="button" class="btn-retry-qa">
+              <i class="fa-solid fa-rotate-right"></i> Retry Question
+            </button>
+            <button type="button" class="btn-settings-qa">
+              <i class="fa-solid fa-sliders"></i> Check Settings
+            </button>
+          </div>
+        </div>
+      `;
+
+      assistantMsg.querySelector('.btn-retry-qa')?.addEventListener('click', () => {
+        sendQuestion(q);
+      });
+      assistantMsg.querySelector('.btn-settings-qa')?.addEventListener('click', () => {
+        settingsModal.classList.remove('hidden');
+      });
     }
   };
 
-  sendChatBtn.addEventListener('click', sendQuestion);
+  sendChatBtn.addEventListener('click', () => sendQuestion());
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendQuestion();
   });

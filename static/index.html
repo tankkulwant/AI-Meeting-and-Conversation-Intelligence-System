@@ -378,6 +378,23 @@
         <!-- TAB 2: Executive Summary & Topics -->
         <div id="tabSummary" class="tab-pane">
           <div class="summary-layout">
+            <!-- Live AI Analysis Banner with Progress -->
+            <div id="aiAnalysisBanner" class="ai-analyzing-banner hidden">
+              <div class="ai-analyzing-icon">
+                <i class="fa-solid fa-brain"></i>
+              </div>
+              <div class="ai-analyzing-info">
+                <h4>
+                  <span>Gemini Neural Processing in Progress</span>
+                  <span class="badge-mini"><i class="fa-solid fa-spinner fa-spin"></i> Live</span>
+                </h4>
+                <p id="aiAnalysisStatusText">Synthesizing executive summary, key takeaways, and action items...</p>
+                <div class="ai-analyzing-bar-wrap">
+                  <div class="ai-analyzing-bar-fill"></div>
+                </div>
+              </div>
+            </div>
+
             <div class="card summary-card">
               <div class="card-header">
                 <h3 class="card-title"><i class="fa-solid fa-wand-magic-sparkles text-primary"></i> Executive Summary (TL;DR)</h3>

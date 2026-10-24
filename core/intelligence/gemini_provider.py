@@ -46,10 +46,28 @@ class GeminiProvider(LLMProvider):
         self._resolved_model = self.model_name or "gemini-3.8-flash"
         return self._resolved_model
 
-    def _generate_with_retry(self, client: genai.Client, contents: str, config: types.GenerateContentConfig):
+    def _is_network_or_dns_error(self, e: Exception) -> bool:
+        """Determines if an exception is caused by transient socket, network, or DNS resolution failures."""
+        err_str = str(e).lower()
+        dns_indicators = [
+            "getaddrinfo failed",
+            "11001",
+            "nameresolutionerror",
+            "connectionerror",
+            "connecttimeout",
+            "timeout",
+            "remotedisconnected",
+            "connection refused",
+            "network is unreachable",
+            "temporary failure in name resolution"
+        ]
+        return any(ind in err_str for ind in dns_indicators)
+
+    def _generate_with_retry(self, client: genai.Client, contents, config):
         """
-        Calls generate_content with automatic model fallback in case of 404 NOT_FOUND.
+        Calls generate_content with automatic network retries and model fallback.
         """
+        import time
         primary_model = self._resolve_model_name(client)
         fallback_chain = [
             primary_model,
@@ -71,23 +89,38 @@ class GeminiProvider(LLMProvider):
                 continue
             attempted.add(model_candidate)
 
-            try:
-                response = client.models.generate_content(
-                    model=model_candidate,
-                    contents=contents,
-                    config=config
-                )
-                self.model_name = model_candidate
-                self._resolved_model = model_candidate
-                return response
-            except Exception as e:
-                last_error = e
-                err_str = str(e).lower()
-                # If 404 or unsupported, continue to next model candidate
-                if "404" in err_str or "not found" in err_str or "not supported" in err_str:
-                    continue
-                # For non-404 errors (like quota or auth), raise directly
-                raise e
+            # Retry transient network / DNS socket errors up to 3 times before giving up
+            max_network_retries = 3
+            for attempt in range(max_network_retries):
+                try:
+                    response = client.models.generate_content(
+                        model=model_candidate,
+                        contents=contents,
+                        config=config
+                    )
+                    self.model_name = model_candidate
+                    self._resolved_model = model_candidate
+                    return response
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e).lower()
+
+                    # Handle network/DNS failures with backoff
+                    if self._is_network_or_dns_error(e):
+                        if attempt < max_network_retries - 1:
+                            time.sleep(0.8 * (attempt + 1))
+                            continue
+                        raise RuntimeError(
+                            "Network Connection Error: Unable to resolve Google AI servers (DNS lookup failed). "
+                            "Please check your internet connection or DNS settings and try again."
+                        ) from e
+
+                    # If 404 or unsupported, continue to next model candidate in fallback chain
+                    if "404" in err_str or "not found" in err_str or "not supported" in err_str:
+                        break
+
+                    # For non-network, non-404 errors (like quota or auth), raise directly
+                    raise e
 
         raise last_error or RuntimeError("Failed to generate content with available Gemini models.")
 

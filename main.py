@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -24,7 +24,7 @@ from config import (
 )
 from core.models import FullTranscript, MeetingAnalysis, ChatQueryResponse, ChatQueryRequest
 from core.extractor import extract_audio
-from core.transcriber import transcribe_audio
+from core.transcriber import transcribe_audio, transcribe_audio_generator
 from core.intelligence.analyzer import IntelligenceAnalyzer
 from core.intelligence.gemini_provider import GeminiProvider
 from core.exporter import export_to_srt, export_to_vtt, export_to_markdown, export_to_pdf
@@ -225,6 +225,55 @@ async def transcribe(req: TranscribeRequest):
     save_session(req.session_id, session)
 
     return transcript
+
+
+@app.get("/api/transcribe-stream/{session_id}")
+def transcribe_stream(session_id: str, model_size: Optional[str] = DEFAULT_WHISPER_MODEL, language: Optional[str] = None):
+    """
+    Streams Server-Sent Events (SSE) reporting real-time Whisper transcription progress percentage (0-100%).
+    """
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found. Please upload a file first.")
+
+    audio_path = session["audio_path"]
+    lang = language if language and language != "auto" else None
+    model_name = model_size or DEFAULT_WHISPER_MODEL
+
+    def event_stream():
+        try:
+            for event in transcribe_audio_generator(
+                audio_path=audio_path,
+                model_size=model_name,
+                language=lang
+            ):
+                if event.get("type") == "complete":
+                    transcript_dict = event["transcript"]
+                    transcript_obj = FullTranscript(**transcript_dict)
+                    srt_path = OUTPUT_DIR / f"{session_id}.srt"
+                    vtt_path = OUTPUT_DIR / f"{session_id}.vtt"
+                    export_to_srt(transcript_obj.segments, str(srt_path))
+                    export_to_vtt(transcript_obj.segments, str(vtt_path))
+
+                    session["transcript"] = transcript_obj
+                    session["srt_path"] = str(srt_path)
+                    session["vtt_path"] = str(vtt_path)
+                    save_session(session_id, session)
+
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            err_data = {"type": "error", "message": str(e)}
+            yield f"data: {json.dumps(err_data)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 class AnalyzeRequest(BaseModel):

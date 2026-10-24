@@ -132,3 +132,86 @@ def transcribe_audio(
         segments=cleaned_segments,
         plain_text=cleaned_plain_text,
     )
+
+
+def transcribe_audio_generator(
+    audio_path: str,
+    model_size: str = DEFAULT_WHISPER_MODEL,
+    language: Optional[str] = None,
+    device: str = DEFAULT_DEVICE,
+    compute_type: str = DEFAULT_COMPUTE_TYPE,
+    initial_prompt: Optional[str] = None,
+):
+    """
+    Generator yielding real-time progress events as audio is transcribed,
+    finishing with the complete FullTranscript object.
+    """
+    model = get_whisper_model(model_size=model_size, device=device, compute_type=compute_type)
+
+    transcribe_kwargs = {
+        "word_timestamps": True,
+        "beam_size": 5,
+        "vad_filter": True,
+        "vad_parameters": {"min_silence_duration_ms": 500},
+    }
+
+    if language:
+        transcribe_kwargs["language"] = language
+    if initial_prompt:
+        transcribe_kwargs["initial_prompt"] = initial_prompt
+
+    raw_segments, info = model.transcribe(audio_path, **transcribe_kwargs)
+    total_duration = max(1.0, float(info.duration))
+
+    parsed_segments = []
+    seg_idx = 1
+
+    for seg in raw_segments:
+        words = []
+        if seg.words:
+            for w in seg.words:
+                words.append(
+                    WordTimestamp(
+                        word=w.word,
+                        start=round(w.start, 2),
+                        end=round(w.end, 2),
+                        probability=round(getattr(w, "probability", 1.0), 2),
+                    )
+                )
+
+        parsed_segments.append(
+            TranscriptSegment(
+                id=seg_idx,
+                start=round(seg.start, 2),
+                end=round(seg.end, 2),
+                text=seg.text.strip(),
+                words=words,
+            )
+        )
+        seg_idx += 1
+
+        percent = min(99, int((seg.end / total_duration) * 100))
+        yield {
+            "type": "progress",
+            "percent": percent,
+            "current_time": round(seg.end, 1),
+            "total_duration": round(total_duration, 1),
+            "text": seg.text.strip()
+        }
+
+    cleaned_segments = clean_segments(parsed_segments)
+    cleaned_plain_text = " ".join(s.text for s in cleaned_segments)
+
+    final_transcript = FullTranscript(
+        language=info.language,
+        duration=round(info.duration, 2),
+        segments=cleaned_segments,
+        plain_text=cleaned_plain_text,
+    )
+
+    yield {
+        "type": "complete",
+        "percent": 100,
+        "transcript": final_transcript.model_dump()
+    }
+

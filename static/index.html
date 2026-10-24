@@ -73,12 +73,44 @@
       </div>
     </section>
 
-    <!-- Progress / Loading Banner -->
-    <div id="progressBanner" class="progress-banner hidden">
-      <div class="spinner"></div>
-      <div class="progress-info">
-        <h4 id="progressStatus">Processing Audio...</h4>
-        <p id="progressDetail">Extracting 16kHz audio stream and generating word timestamps.</p>
+    <!-- Real-time Percentage Progress Card -->
+    <div id="progressBanner" class="progress-card hidden">
+      <div class="progress-header">
+        <div class="progress-title-wrap">
+          <div class="spinner-pulse" id="progressSpinner"></div>
+          <div>
+            <h4 id="progressStatus" class="progress-title">1/3 Uploading Media...</h4>
+            <p id="progressDetail" class="progress-subtitle">Uploading file and extracting 16kHz audio stream.</p>
+          </div>
+        </div>
+        <div class="progress-pct-badge" id="progressPctBadge">0%</div>
+      </div>
+
+      <!-- Progress Track -->
+      <div class="progress-track">
+        <div id="progressBarFill" class="progress-bar-fill" style="width: 0%"></div>
+      </div>
+
+      <!-- Pipeline Steps Row -->
+      <div class="progress-steps-row">
+        <div class="prog-step active" id="progStepUpload">
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <span>1. Upload</span>
+        </div>
+        <div class="prog-step" id="progStepTranscribe">
+          <i class="fa-solid fa-microphone-lines"></i>
+          <span>2. Transcribe</span>
+        </div>
+        <div class="prog-step" id="progStepAnalyze">
+          <i class="fa-solid fa-brain"></i>
+          <span>3. AI Intelligence</span>
+        </div>
+      </div>
+
+      <!-- Real-time Live Ticker -->
+      <div id="progressLiveTicker" class="progress-live-ticker hidden">
+        <i class="fa-solid fa-wave-square ticker-icon"></i>
+        <span id="tickerText">Initializing transcription engine...</span>
       </div>
     </div>
 

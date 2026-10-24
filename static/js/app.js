@@ -16,6 +16,13 @@ const langSelect = document.getElementById('langSelect');
 const progressBanner = document.getElementById('progressBanner');
 const progressStatus = document.getElementById('progressStatus');
 const progressDetail = document.getElementById('progressDetail');
+const progressPctBadge = document.getElementById('progressPctBadge');
+const progressBarFill = document.getElementById('progressBarFill');
+const progStepUpload = document.getElementById('progStepUpload');
+const progStepTranscribe = document.getElementById('progStepTranscribe');
+const progStepAnalyze = document.getElementById('progStepAnalyze');
+const progressLiveTicker = document.getElementById('progressLiveTicker');
+const tickerText = document.getElementById('tickerText');
 const uploadSection = document.getElementById('uploadSection');
 const workspaceSection = document.getElementById('workspaceSection');
 
@@ -195,44 +202,161 @@ function initDropzoneEvents() {
 // ==========================================
 // Processing Pipeline
 // ==========================================
+function setProgress({ percent, title, detail, step, ticker }) {
+  if (percent !== undefined) {
+    const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+    if (progressPctBadge) progressPctBadge.textContent = `${clamped}%`;
+    if (progressBarFill) progressBarFill.style.width = `${clamped}%`;
+  }
+  if (title && progressStatus) progressStatus.textContent = title;
+  if (detail && progressDetail) progressDetail.textContent = detail;
+  if (ticker !== undefined && progressLiveTicker) {
+    if (ticker) {
+      progressLiveTicker.classList.remove('hidden');
+      if (tickerText) tickerText.textContent = ticker;
+    } else {
+      progressLiveTicker.classList.add('hidden');
+    }
+  }
+  if (step) {
+    if (progStepUpload) {
+      progStepUpload.className = step === 'upload' ? 'prog-step active' : (step === 'transcribe' || step === 'analyze' || step === 'done' ? 'prog-step completed' : 'prog-step');
+    }
+    if (progStepTranscribe) {
+      progStepTranscribe.className = step === 'transcribe' ? 'prog-step active' : (step === 'analyze' || step === 'done' ? 'prog-step completed' : 'prog-step');
+    }
+    if (progStepAnalyze) {
+      progStepAnalyze.className = step === 'analyze' ? 'prog-step active' : (step === 'done' ? 'prog-step completed' : 'prog-step');
+    }
+  }
+}
+
+function uploadMediaWithProgress(file) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
+        const totalMb = (e.total / (1024 * 1024)).toFixed(1);
+        setProgress({
+          percent: pct,
+          title: `1/3 Uploading Media (${pct}%)`,
+          detail: `Uploaded ${loadedMb} MB of ${totalMb} MB (${pct}% complete)...`,
+          step: 'upload',
+          ticker: `Uploading ${file.name} to server...`
+        });
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          resolve(res);
+        } catch (err) {
+          reject(new Error('Invalid server response format during upload.'));
+        }
+      } else {
+        reject(new Error(xhr.responseText || `Upload failed with status ${xhr.status}`));
+      }
+    });
+
+    xhr.addEventListener('error', () => reject(new Error('Network connection error during upload.')));
+    xhr.addEventListener('abort', () => reject(new Error('Upload operation was aborted.')));
+
+    xhr.open('POST', '/api/upload');
+    xhr.send(formData);
+  });
+}
+
+function transcribeAudioWithProgress(sessionId, modelSize, language) {
+  return new Promise((resolve, reject) => {
+    setProgress({
+      percent: 0,
+      title: '2/3 Whisper Transcribing (0%)',
+      detail: `Loading Faster-Whisper ${modelSize} model with Silero VAD...`,
+      step: 'transcribe',
+      ticker: 'Warming up Whisper neural model...'
+    });
+
+    const params = new URLSearchParams();
+    if (modelSize) params.append('model_size', modelSize);
+    if (language && language !== 'auto') params.append('language', language);
+
+    const sseUrl = `/api/transcribe-stream/${sessionId}?${params.toString()}`;
+    const eventSource = new EventSource(sseUrl);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'progress') {
+          const pct = data.percent || 0;
+          const curr = formatTime(data.current_time || 0);
+          const total = formatTime(data.total_duration || 0);
+          setProgress({
+            percent: pct,
+            title: `2/3 Whisper Transcribing (${pct}%)`,
+            detail: `Transcribed ${curr} / ${total} audio (${pct}%)`,
+            step: 'transcribe',
+            ticker: data.text ? `"${data.text}"` : 'Transcribing speech segments...'
+          });
+        } else if (data.type === 'complete') {
+          eventSource.close();
+          setProgress({
+            percent: 100,
+            title: '2/3 Transcription Complete (100%)',
+            detail: 'Timestamped transcript with word alignments generated.',
+            step: 'transcribe',
+            ticker: 'Speech-to-text complete!'
+          });
+          resolve(data.transcript);
+        } else if (data.type === 'error') {
+          eventSource.close();
+          reject(new Error(data.message || 'Transcription error occurred.'));
+        }
+      } catch (err) {
+        console.error('SSE parse error:', err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      eventSource.close();
+      reject(new Error('Transcription stream connection interrupted.'));
+    };
+  });
+}
+
 async function processSelectedFile(file) {
   try {
     uploadSection.classList.add('hidden');
     progressBanner.classList.remove('hidden');
-    progressStatus.textContent = '1/3 Uploading & Extracting Audio...';
-    progressDetail.textContent = `Processing "${file.name}" with FFmpeg (16kHz mono normalization).`;
 
-    // Step 1: Upload media & extract audio
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const uploadRes = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData
+    // Step 1: Upload media & extract audio with live upload percentage
+    setProgress({
+      percent: 0,
+      title: '1/3 Uploading Media (0%)',
+      detail: `Preparing "${file.name}" for upload...`,
+      step: 'upload',
+      ticker: 'Initiating file transfer...'
     });
-    if (!uploadRes.ok) throw new Error(await uploadRes.text());
-    const uploadData = await uploadRes.json();
+
+    const uploadData = await uploadMediaWithProgress(file);
     currentSessionId = uploadData.session_id;
 
     // Setup Media Player
     setupPlayer(uploadData.media_url, uploadData.is_video);
     stripFileName.textContent = uploadData.filename;
 
-    // Step 2: Transcribe
-    progressStatus.textContent = '2/3 Generating Timestamped Transcript...';
-    progressDetail.textContent = `Running Whisper (${modelSelect.value}) with Silero VAD filtering.`;
-
-    const transcribeRes = await fetch('/api/transcribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: currentSessionId,
-        model_size: modelSelect.value,
-        language: langSelect.value
-      })
-    });
-    if (!transcribeRes.ok) throw new Error(await transcribeRes.text());
-    currentTranscript = await transcribeRes.json();
+    // Step 2: Transcribe with live streaming percentage (0% to 100%)
+    currentTranscript = await transcribeAudioWithProgress(
+      currentSessionId,
+      modelSelect.value,
+      langSelect.value
+    );
     transcriptSegments = currentTranscript.segments || [];
 
     // Calculate Metrics & Render Transcript
